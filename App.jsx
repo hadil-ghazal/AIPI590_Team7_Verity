@@ -756,31 +756,81 @@ const RegulationsView = () => (
 );
 
 // ── CREATE PASSPORT MODAL ─────────────────────────────────────────────────────
+
+
 const CreateModal = ({ onClose, onCreate }) => {
   const [step, setStep] = useState(1);
-  const [form, setForm] = useState({ name: '', assetType: '', project: '', department: '', notes: '' });
+  const [form, setForm] = useState({
+    name: '',
+    assetType: '',
+    project: '',
+    department: '',
+    region: '',
+    notes: ''
+  });
   const [selectedTools, setSelectedTools] = useState({});
   const [errors, setErrors] = useState({});
 
   const assetTypes = ['VFX / Visual', 'Audio / Music', 'Audio / Voice', 'Image / Marketing', 'Motion Graphics', 'Script / Text'];
   const projects = ['Nebula Rising', 'The Last Signal', 'Crimson Veil', 'New Project'];
+  const regions = ['California', 'European Union', 'Other'];
 
   const Field = ({ label, name, type = 'text', options, rows }) => {
-    const inputStyle = { width: '100%', padding: '9px 12px', background: C.input, border: `1px solid ${errors[name] ? C.flagged + '80' : C.borderInput}`, borderRadius: 8, color: C.textPrimary, fontSize: 13, transition: 'border-color 0.15s' };
+    const inputStyle = {
+      width: '100%',
+      padding: '9px 12px',
+      background: C.input,
+      border: `1px solid ${errors[name] ? C.flagged + '80' : C.borderInput}`,
+      borderRadius: 8,
+      color: C.textPrimary,
+      fontSize: 13,
+      transition: 'border-color 0.15s'
+    };
+
     return (
       <div style={{ marginBottom: 14 }}>
-        <label style={{ display: 'block', fontSize: 12, fontWeight: 500, color: C.textMuted, marginBottom: 6 }}>{label}{name === 'name' && <span style={{ color: C.flagged }}> *</span>}</label>
+        <label style={{ display: 'block', fontSize: 12, fontWeight: 500, color: C.textMuted, marginBottom: 6 }}>
+          {label}
+          {name === 'name' && <span style={{ color: C.flagged }}> *</span>}
+        </label>
+
         {type === 'select' ? (
-          <select value={form[name]} onChange={e => setForm({ ...form, [name]: e.target.value })} style={{ ...inputStyle, appearance: 'none' }}>
+          <select
+            value={form[name]}
+            onChange={e => setForm({ ...form, [name]: e.target.value })}
+            style={{ ...inputStyle, appearance: 'none' }}
+          >
             <option value="">Select {label.toLowerCase()}…</option>
-            {options.map(o => <option key={o} value={o}>{o}</option>)}
+            {options.map(o => (
+              <option key={o} value={o}>{o}</option>
+            ))}
           </select>
         ) : rows ? (
-          <textarea value={form[name]} onChange={e => setForm({ ...form, [name]: e.target.value })} rows={rows} placeholder={`Add notes or context…`} style={{ ...inputStyle, resize: 'vertical', fontFamily: 'inherit' }} />
+          <textarea
+            value={form[name]}
+            onChange={e => setForm({ ...form, [name]: e.target.value })}
+            rows={rows}
+            placeholder="Add notes or context…"
+            style={{ ...inputStyle, resize: 'vertical', fontFamily: 'inherit' }}
+          />
         ) : (
-          <input type={type} value={form[name]} onChange={e => { setForm({ ...form, [name]: e.target.value }); if (errors[name]) setErrors({ ...errors, [name]: false }); }} style={inputStyle} placeholder={`Enter ${label.toLowerCase()}…`} />
+          <input
+            type={type}
+            value={form[name]}
+            onChange={e => {
+              setForm({ ...form, [name]: e.target.value });
+              if (errors[name]) setErrors({ ...errors, [name]: false });
+            }}
+            style={inputStyle}
+            placeholder={`Enter ${label.toLowerCase()}…`}
+          />
         )}
-        {errors[name] && <div style={{ fontSize: 11, color: C.flagged, marginTop: 4 }}>This field is required</div>}
+
+        {errors[name] && (
+          <div style={{ fontSize: 11, color: C.flagged, marginTop: 4 }}>
+            This field is required
+          </div>
+        )}
       </div>
     );
   };
@@ -795,101 +845,281 @@ const CreateModal = ({ onClose, onCreate }) => {
   };
 
   const handleNext = () => {
-    if (!form.name.trim()) { setErrors({ name: true }); return; }
+    if (!form.name.trim()) {
+      setErrors({ name: true });
+      return;
+    }
     setStep(2);
   };
 
-  const handleCreate = () => {
+  const handleCreate = async () => {
+    const firstToolId = Object.keys(selectedTools)[0];
+const firstTool = AI_CATALOG.find(t => t.id === firstToolId);
+
+const apiPayload = {
+  asset_name: { value: form.name, source: 'api' },
+  tool_used: { value: firstTool?.name || 'Unknown', source: 'synthetic' },
+  region: { value: form.region || 'Other', source: 'api' }
+};
+
+let result = null;
+
+try {
+  const response = await fetch('http://127.0.0.1:8000/evaluate-asset', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(apiPayload)
+  });
+
+  result = await response.json();
+  console.log("API RESULT:", result);
+
+} catch (err) {
+  console.error("API failed", err);
+}
     const tools = Object.entries(selectedTools).map(([toolId, purpose]) => ({
-      toolId, purpose: purpose || 'Purpose not specified',
-      usedBy: form.department || 'Unknown', date: new Date().toISOString().slice(0, 10), status: 'pending',
+      toolId,
+      purpose: purpose || 'Purpose not specified',
+      usedBy: form.department || 'Unknown',
+      date: new Date().toISOString().slice(0, 10),
+      status: 'pending',
     }));
-    const regs = tools.some(t => ['t3', 't8', 't7'].includes(t.toolId)) ? ['r1', 'r2', 'r3'] : ['r1', 'r2'];
-    onCreate({
-      id: 'p' + Date.now(),
-      name: form.name, status: 'draft',
-      project: form.project || 'Unassigned', studio: '—',
-      assetType: form.assetType || 'Other', department: form.department || '—',
-      createdDate: new Date().toISOString().slice(0, 10),
-      notes: form.notes, tools,
-      approvals: [
-        { stage: 'Department Lead', approver: '—', date: null, status: 'pending' },
-        { stage: 'Legal Review', approver: 'Marcus Webb', date: null, status: 'pending' },
-        { stage: 'Compliance Sign-off', approver: 'Robert Torres', date: null, status: 'pending' },
-      ],
-      regulations: regs,
-    });
+
+    const regs = tools.some(t => ['t3', 't8', 't7'].includes(t.toolId))
+      ? ['r1', 'r2', 'r3']
+      : ['r1', 'r2'];
+
+
+onCreate({
+  id: 'p' + Date.now(),
+  name: form.name,
+  status: result?.status === 'Needs Review' ? 'in-review' : 'approved',
+  project: form.project || 'Unassigned',
+  studio: '—',
+  assetType: form.assetType || 'Other',
+  department: form.department || '—',
+  createdDate: new Date().toISOString().slice(0, 10),
+  notes: result?.disclosure || form.notes,
+  region: form.region || 'Other',
+  tools,
+  approvals: [
+    { stage: 'Department Lead', approver: '—', date: null, status: 'pending' },
+    { stage: 'Legal Review', approver: 'Marcus Webb', date: null, status: 'pending' },
+    { stage: 'Compliance Sign-off', approver: 'Robert Torres', date: null, status: 'pending' },
+  ],
+  regulations: regs,
+  compliance: result,
+});
+
     onClose();
   };
 
   return (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(6px)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', animation: 'fadeIn 0.2s ease' }}>
-      <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 16, width: '100%', maxWidth: 560, maxHeight: '90vh', overflow: 'hidden', display: 'flex', flexDirection: 'column', animation: 'scaleIn 0.2s ease', boxShadow: '0 24px 60px rgba(0,0,0,0.5)' }}>
-        {/* Modal Header */}
-        <div style={{ padding: '20px 24px', borderBottom: `1px solid ${C.border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+    <div
+      style={{
+        position: 'fixed',
+        inset: 0,
+        background: 'rgba(0,0,0,0.7)',
+        backdropFilter: 'blur(6px)',
+        zIndex: 100,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        animation: 'fadeIn 0.2s ease'
+      }}
+    >
+      <div
+        style={{
+          background: C.card,
+          border: `1px solid ${C.border}`,
+          borderRadius: 16,
+          width: '100%',
+          maxWidth: 560,
+          maxHeight: '90vh',
+          overflow: 'hidden',
+          display: 'flex',
+          flexDirection: 'column',
+          animation: 'scaleIn 0.2s ease',
+          boxShadow: '0 24px 60px rgba(0,0,0,0.5)'
+        }}
+      >
+        <div
+          style={{
+            padding: '20px 24px',
+            borderBottom: `1px solid ${C.border}`,
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center'
+          }}
+        >
           <div>
-            <div style={{ fontFamily: 'Fraunces, serif', fontSize: 18, fontWeight: 600, color: C.text }}>Create Asset Passport</div>
-            <div style={{ fontSize: 12, color: C.textMuted, marginTop: 2 }}>Step {step} of 2 — {step === 1 ? 'Asset Details' : 'AI Tool Usage'}</div>
+            <div style={{ fontFamily: 'Fraunces, serif', fontSize: 18, fontWeight: 600, color: C.text }}>
+              Create Asset Passport
+            </div>
+            <div style={{ fontSize: 12, color: C.textMuted, marginTop: 2 }}>
+              Step {step} of 2 — {step === 1 ? 'Asset Details' : 'AI Tool Usage'}
+            </div>
           </div>
-          <button onClick={onClose} style={{ color: C.textMuted, padding: 4, borderRadius: 6, transition: 'color 0.15s, background 0.15s', background: 'none' }}
-            onMouseEnter={e => e.currentTarget.style.color = C.textPrimary} onMouseLeave={e => e.currentTarget.style.color = C.textMuted}>
+
+          <button
+            onClick={onClose}
+            style={{
+              color: C.textMuted,
+              padding: 4,
+              borderRadius: 6,
+              transition: 'color 0.15s, background 0.15s',
+              background: 'none'
+            }}
+            onMouseEnter={e => e.currentTarget.style.color = C.textPrimary}
+            onMouseLeave={e => e.currentTarget.style.color = C.textMuted}
+          >
             <Icons.X size={18} />
           </button>
         </div>
 
-        {/* Step indicator */}
-        <div style={{ padding: '14px 24px', borderBottom: `1px solid ${C.border}`, display: 'flex', gap: 8, alignItems: 'center' }}>
+        <div
+          style={{
+            padding: '14px 24px',
+            borderBottom: `1px solid ${C.border}`,
+            display: 'flex',
+            gap: 8,
+            alignItems: 'center'
+          }}
+        >
           {[1, 2].map(s => (
             <React.Fragment key={s}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <div style={{ width: 26, height: 26, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 600, background: step >= s ? C.accent : C.input, color: step >= s ? '#0a1a0d' : C.textFaint, border: `1px solid ${step >= s ? C.accent : C.border}`, transition: 'all 0.2s' }}>{s > step ? s : <Icons.Check size={12} />}</div>
-                <span style={{ fontSize: 12, color: step === s ? C.textPrimary : C.textFaint }}>{s === 1 ? 'Asset Details' : 'AI Tools'}</span>
+                <div
+                  style={{
+                    width: 26,
+                    height: 26,
+                    borderRadius: '50%',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    fontSize: 12,
+                    fontWeight: 600,
+                    background: step >= s ? C.accent : C.input,
+                    color: step >= s ? '#0a1a0d' : C.textFaint,
+                    border: `1px solid ${step >= s ? C.accent : C.border}`,
+                    transition: 'all 0.2s'
+                  }}
+                >
+                  {s > step ? s : <Icons.Check size={12} />}
+                </div>
+                <span style={{ fontSize: 12, color: step === s ? C.textPrimary : C.textFaint }}>
+                  {s === 1 ? 'Asset Details' : 'AI Tools'}
+                </span>
               </div>
-              {s === 1 && <div style={{ flex: 1, height: 1, background: step > 1 ? C.accent + '60' : C.border, transition: 'background 0.3s' }} />}
+              {s === 1 && (
+                <div
+                  style={{
+                    flex: 1,
+                    height: 1,
+                    background: step > 1 ? C.accent + '60' : C.border,
+                    transition: 'background 0.3s'
+                  }}
+                />
+              )}
             </React.Fragment>
           ))}
         </div>
 
-        {/* Body */}
         <div style={{ flex: 1, overflowY: 'auto', padding: '20px 24px' }}>
           {step === 1 && (
             <div style={{ animation: 'fadeIn 0.2s ease' }}>
               <Field label="Asset Name" name="name" />
+
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                 <Field label="Asset Type" name="assetType" type="select" options={assetTypes} />
                 <Field label="Project" name="project" type="select" options={projects} />
               </div>
-              <Field label="Department" name="department" />
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                <Field label="Department" name="department" />
+                <Field label="Region" name="region" type="select" options={regions} />
+              </div>
+
               <Field label="Notes" name="notes" rows={3} />
             </div>
           )}
+
           {step === 2 && (
             <div style={{ animation: 'fadeIn 0.2s ease' }}>
-              <div style={{ fontSize: 13, color: C.textMuted, marginBottom: 14 }}>Select the AI tools used in creating this asset. For each selected tool, describe its specific purpose.</div>
+              <div style={{ fontSize: 13, color: C.textMuted, marginBottom: 14 }}>
+                Select the AI tools used in creating this asset. For each selected tool, describe its specific purpose.
+              </div>
+
               {AI_CATALOG.map((tool, i) => {
                 const selected = !!selectedTools[tool.id];
+
                 return (
                   <div key={tool.id} style={{ marginBottom: 10, animation: `slideUp 0.25s ease ${i * 30}ms both` }}>
-                    <div onClick={() => toggleTool(tool.id)} style={{
-                      display: 'flex', alignItems: 'center', gap: 12, padding: '11px 14px',
-                      background: selected ? `${C.accent}10` : C.input,
-                      border: `1px solid ${selected ? C.accent + '50' : C.borderInput}`,
-                      borderRadius: selected ? '8px 8px 0 0' : 8, cursor: 'pointer',
-                      transition: 'all 0.15s',
-                    }}>
-                      <div style={{ width: 18, height: 18, borderRadius: 5, border: `1.5px solid ${selected ? C.accent : C.textFaint}`, background: selected ? C.accent : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, transition: 'all 0.15s' }}>
+                    <div
+                      onClick={() => toggleTool(tool.id)}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 12,
+                        padding: '11px 14px',
+                        background: selected ? `${C.accent}10` : C.input,
+                        border: `1px solid ${selected ? C.accent + '50' : C.borderInput}`,
+                        borderRadius: selected ? '8px 8px 0 0' : 8,
+                        cursor: 'pointer',
+                        transition: 'all 0.15s',
+                      }}
+                    >
+                      <div
+                        style={{
+                          width: 18,
+                          height: 18,
+                          borderRadius: 5,
+                          border: `1.5px solid ${selected ? C.accent : C.textFaint}`,
+                          background: selected ? C.accent : 'transparent',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          flexShrink: 0,
+                          transition: 'all 0.15s'
+                        }}
+                      >
                         {selected && <Icons.Check size={11} style={{ color: '#0a1a0d' }} />}
                       </div>
+
                       <div style={{ flex: 1 }}>
-                        <div style={{ fontSize: 13, fontWeight: 500, color: selected ? C.textPrimary : C.textSecondary }}>{tool.name}</div>
-                        <div style={{ fontSize: 11, color: C.textFaint }}>{tool.category} · {tool.vendor}</div>
+                        <div style={{ fontSize: 13, fontWeight: 500, color: selected ? C.textPrimary : C.textSecondary }}>
+                          {tool.name}
+                        </div>
+                        <div style={{ fontSize: 11, color: C.textFaint }}>
+                          {tool.category} · {tool.vendor}
+                        </div>
                       </div>
                     </div>
+
                     {selected && (
-                      <div style={{ padding: '10px 14px', background: `${C.accent}08`, border: `1px solid ${C.accent}40`, borderTop: 'none', borderRadius: '0 0 8px 8px' }}>
-                        <input value={selectedTools[tool.id]} onChange={e => setSelectedTools(prev => ({ ...prev, [tool.id]: e.target.value }))}
+                      <div
+                        style={{
+                          padding: '10px 14px',
+                          background: `${C.accent}08`,
+                          border: `1px solid ${C.accent}40`,
+                          borderTop: 'none',
+                          borderRadius: '0 0 8px 8px'
+                        }}
+                      >
+                        <input
+                          value={selectedTools[tool.id]}
+                          onChange={e => setSelectedTools(prev => ({ ...prev, [tool.id]: e.target.value }))}
                           placeholder="Describe how this tool was used…"
-                          style={{ width: '100%', padding: '7px 10px', background: C.input, border: `1px solid ${C.borderInput}`, borderRadius: 6, color: C.textPrimary, fontSize: 12 }} />
+                          style={{
+                            width: '100%',
+                            padding: '7px 10px',
+                            background: C.input,
+                            border: `1px solid ${C.borderInput}`,
+                            borderRadius: 6,
+                            color: C.textPrimary,
+                            fontSize: 12
+                          }}
+                        />
                       </div>
                     )}
                   </div>
@@ -899,18 +1129,35 @@ const CreateModal = ({ onClose, onCreate }) => {
           )}
         </div>
 
-        {/* Footer */}
-        <div style={{ padding: '16px 24px', borderTop: `1px solid ${C.border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <Btn variant="ghost" onClick={step === 1 ? onClose : () => setStep(1)}>{step === 1 ? 'Cancel' : 'Back'}</Btn>
-          {step === 1
-            ? <Btn onClick={handleNext}>Next: AI Tools <Icons.ChevRight size={13} /></Btn>
-            : <Btn onClick={handleCreate} icon={<Icons.Check size={13} />}>Create Passport</Btn>
-          }
+        <div
+          style={{
+            padding: '16px 24px',
+            borderTop: `1px solid ${C.border}`,
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center'
+          }}
+        >
+          <Btn variant="ghost" onClick={step === 1 ? onClose : () => setStep(1)}>
+            {step === 1 ? 'Cancel' : 'Back'}
+          </Btn>
+
+          {step === 1 ? (
+            <Btn onClick={handleNext}>
+              Next: AI Tools <Icons.ChevRight size={13} />
+            </Btn>
+          ) : (
+            <Btn onClick={handleCreate} icon={<Icons.Check size={13} />}>
+              Create Passport
+            </Btn>
+          )}
         </div>
       </div>
     </div>
   );
 };
+
+
 
 // ── MAIN APP ──────────────────────────────────────────────────────────────────
 export default function App() {
