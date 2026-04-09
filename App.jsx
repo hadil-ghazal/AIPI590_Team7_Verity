@@ -757,6 +757,65 @@ const RegulationsView = () => (
 
 // ── CREATE PASSPORT MODAL ─────────────────────────────────────────────────────
 
+const ModalField = ({ label, name, type = 'text', options, rows, form, setForm, errors, setErrors }) => {
+  const inputStyle = {
+    width: '100%',
+    padding: '9px 12px',
+    background: C.input,
+    border: `1px solid ${errors[name] ? C.flagged + '80' : C.borderInput}`,
+    borderRadius: 8,
+    color: C.textPrimary,
+    fontSize: 13,
+    transition: 'border-color 0.15s'
+  };
+
+  return (
+    <div style={{ marginBottom: 14 }}>
+      <label style={{ display: 'block', fontSize: 12, fontWeight: 500, color: C.textMuted, marginBottom: 6 }}>
+        {label}
+        {name === 'name' && <span style={{ color: C.flagged }}> *</span>}
+      </label>
+
+      {type === 'select' ? (
+        <select
+          value={form[name]}
+          onChange={e => setForm({ ...form, [name]: e.target.value })}
+          style={{ ...inputStyle, appearance: 'none' }}
+        >
+          <option value="">Select {label.toLowerCase()}…</option>
+          {options.map(o => (
+            <option key={o} value={o}>{o}</option>
+          ))}
+        </select>
+      ) : rows ? (
+        <textarea
+          value={form[name]}
+          onChange={e => setForm({ ...form, [name]: e.target.value })}
+          rows={rows}
+          placeholder="Add notes or context…"
+          style={{ ...inputStyle, resize: 'vertical', fontFamily: 'inherit' }}
+        />
+      ) : (
+        <input
+          type={type}
+          value={form[name]}
+          onChange={e => {
+            setForm({ ...form, [name]: e.target.value });
+            if (errors[name]) setErrors({ ...errors, [name]: false });
+          }}
+          style={inputStyle}
+          placeholder={`Enter ${label.toLowerCase()}…`}
+        />
+      )}
+
+      {errors[name] && (
+        <div style={{ fontSize: 11, color: C.flagged, marginTop: 4 }}>
+          This field is required
+        </div>
+      )}
+    </div>
+  );
+};
 
 const CreateModal = ({ onClose, onCreate }) => {
   const [step, setStep] = useState(1);
@@ -775,65 +834,7 @@ const CreateModal = ({ onClose, onCreate }) => {
   const projects = ['Nebula Rising', 'The Last Signal', 'Crimson Veil', 'New Project'];
   const regions = ['California', 'European Union', 'Other'];
 
-  const Field = ({ label, name, type = 'text', options, rows }) => {
-    const inputStyle = {
-      width: '100%',
-      padding: '9px 12px',
-      background: C.input,
-      border: `1px solid ${errors[name] ? C.flagged + '80' : C.borderInput}`,
-      borderRadius: 8,
-      color: C.textPrimary,
-      fontSize: 13,
-      transition: 'border-color 0.15s'
-    };
 
-    return (
-      <div style={{ marginBottom: 14 }}>
-        <label style={{ display: 'block', fontSize: 12, fontWeight: 500, color: C.textMuted, marginBottom: 6 }}>
-          {label}
-          {name === 'name' && <span style={{ color: C.flagged }}> *</span>}
-        </label>
-
-        {type === 'select' ? (
-          <select
-            value={form[name]}
-            onChange={e => setForm({ ...form, [name]: e.target.value })}
-            style={{ ...inputStyle, appearance: 'none' }}
-          >
-            <option value="">Select {label.toLowerCase()}…</option>
-            {options.map(o => (
-              <option key={o} value={o}>{o}</option>
-            ))}
-          </select>
-        ) : rows ? (
-          <textarea
-            value={form[name]}
-            onChange={e => setForm({ ...form, [name]: e.target.value })}
-            rows={rows}
-            placeholder="Add notes or context…"
-            style={{ ...inputStyle, resize: 'vertical', fontFamily: 'inherit' }}
-          />
-        ) : (
-          <input
-            type={type}
-            value={form[name]}
-            onChange={e => {
-              setForm({ ...form, [name]: e.target.value });
-              if (errors[name]) setErrors({ ...errors, [name]: false });
-            }}
-            style={inputStyle}
-            placeholder={`Enter ${label.toLowerCase()}…`}
-          />
-        )}
-
-        {errors[name] && (
-          <div style={{ fontSize: 11, color: C.flagged, marginTop: 4 }}>
-            This field is required
-          </div>
-        )}
-      </div>
-    );
-  };
 
   const toggleTool = (id) => {
     setSelectedTools(prev => {
@@ -1028,19 +1029,19 @@ onCreate({
         <div style={{ flex: 1, overflowY: 'auto', padding: '20px 24px' }}>
           {step === 1 && (
             <div style={{ animation: 'fadeIn 0.2s ease' }}>
-              <Field label="Asset Name" name="name" />
+              <ModalField label="Asset Name" name="name" form={form} setForm={setForm} errors={errors} setErrors={setErrors} />
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                <Field label="Asset Type" name="assetType" type="select" options={assetTypes} />
-                <Field label="Project" name="project" type="select" options={projects} />
+              <ModalField label="Asset Type" name="assetType" type="select" options={assetTypes} form={form} setForm={setForm} errors={errors} setErrors={setErrors} />
+              <ModalField label="Project" name="project" type="select" options={projects} form={form} setForm={setForm} errors={errors} setErrors={setErrors} />
               </div>
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                <Field label="Department" name="department" />
-                <Field label="Region" name="region" type="select" options={regions} />
+              <ModalField label="Department" name="department" form={form} setForm={setForm} errors={errors} setErrors={setErrors} />
+              <ModalField label="Region" name="region" type="select" options={regions} form={form} setForm={setForm} errors={errors} setErrors={setErrors} />
               </div>
 
-              <Field label="Notes" name="notes" rows={3} />
+              <ModalField label="Notes" name="notes" rows={3} form={form} setForm={setForm} errors={errors} setErrors={setErrors} />
             </div>
           )}
 
