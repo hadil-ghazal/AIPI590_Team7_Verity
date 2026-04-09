@@ -1050,81 +1050,73 @@ onCreate({
                 Select the AI tools used in creating this asset. For each selected tool, describe its specific purpose.
               </div>
 
+
               {AI_CATALOG.map((tool, i) => {
-                const selected = !!selectedTools[tool.id];
+  const selected = Object.prototype.hasOwnProperty.call(selectedTools, tool.id);
 
-                return (
-                  <div key={tool.id} style={{ marginBottom: 10, animation: `slideUp 0.25s ease ${i * 30}ms both` }}>
-                    <div
-                      onClick={() => toggleTool(tool.id)}
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: 12,
-                        padding: '11px 14px',
-                        background: selected ? `${C.accent}10` : C.input,
-                        border: `1px solid ${selected ? C.accent + '50' : C.borderInput}`,
-                        borderRadius: selected ? '8px 8px 0 0' : 8,
-                        cursor: 'pointer',
-                        transition: 'all 0.15s',
-                      }}
-                    >
-                      <div
-                        style={{
-                          width: 18,
-                          height: 18,
-                          borderRadius: 5,
-                          border: `1.5px solid ${selected ? C.accent : C.textFaint}`,
-                          background: selected ? C.accent : 'transparent',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          flexShrink: 0,
-                          transition: 'all 0.15s'
-                        }}
-                      >
-                        {selected && <Icons.Check size={11} style={{ color: '#0a1a0d' }} />}
-                      </div>
+  return (
+    <div
+  key={tool.id}
+  style={{ marginBottom: 10 }}
+  onClick={() => toggleTool(tool.id)}
+>
+      <label
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 12,
+          padding: '11px 14px',
+          background: selected ? `${C.accent}10` : C.input,
+          border: `1px solid ${selected ? C.accent + '50' : C.borderInput}`,
+          borderRadius: selected ? '8px 8px 0 0' : 8,
+          cursor: 'pointer',
+        }}
+      >
+        <input
+  type="checkbox"
+  checked={selected}
+  onClick={(e) => {
+    e.stopPropagation();
+    toggleTool(tool.id);
+  }}
+  readOnly
+  style={{ width: 16, height: 16 }}
+/>
 
-                      <div style={{ flex: 1 }}>
-                        <div style={{ fontSize: 13, fontWeight: 500, color: selected ? C.textPrimary : C.textSecondary }}>
-                          {tool.name}
-                        </div>
-                        <div style={{ fontSize: 11, color: C.textFaint }}>
-                          {tool.category} · {tool.vendor}
-                        </div>
-                      </div>
-                    </div>
+        <div style={{ flex: 1 }}>
+          <div style={{ fontSize: 13, fontWeight: 500 }}>
+            {tool.name}
+          </div>
+          <div style={{ fontSize: 11, color: C.textFaint }}>
+            {tool.category} · {tool.vendor}
+          </div>
+        </div>
+      </label>
 
-                    {selected && (
-                      <div
-                        style={{
-                          padding: '10px 14px',
-                          background: `${C.accent}08`,
-                          border: `1px solid ${C.accent}40`,
-                          borderTop: 'none',
-                          borderRadius: '0 0 8px 8px'
-                        }}
-                      >
-                        <input
-                          value={selectedTools[tool.id]}
-                          onChange={e => setSelectedTools(prev => ({ ...prev, [tool.id]: e.target.value }))}
-                          placeholder="Describe how this tool was used…"
-                          style={{
-                            width: '100%',
-                            padding: '7px 10px',
-                            background: C.input,
-                            border: `1px solid ${C.borderInput}`,
-                            borderRadius: 6,
-                            color: C.textPrimary,
-                            fontSize: 12
-                          }}
-                        />
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
+      {selected && (
+        <div style={{ padding: '10px 14px' }}>
+          <input
+            value={selectedTools[tool.id]}
+            onChange={e =>
+              setSelectedTools(prev => ({ ...prev, [tool.id]: e.target.value }))
+            }
+            placeholder="Describe how this tool was used…"
+            style={{
+              width: '100%',
+              padding: '7px 10px',
+              background: C.input,
+              border: `1px solid ${C.borderInput}`,
+              borderRadius: 6,
+              color: C.textPrimary,
+              fontSize: 12
+            }}
+          />
+        </div>
+      )}
+    </div>
+  );
+})}
+
             </div>
           )}
         </div>
