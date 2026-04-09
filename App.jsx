@@ -873,7 +873,7 @@ try {
   });
 
   result = await response.json();
-  console.log("API RESULT:", result);
+  //console.log("API RESULT:", result);
 
 } catch (err) {
   console.error("API failed", err);
