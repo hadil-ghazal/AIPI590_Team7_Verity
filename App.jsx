@@ -829,6 +829,7 @@ const CreateModal = ({ onClose, onCreate }) => {
   });
   const [selectedTools, setSelectedTools] = useState({});
   const [errors, setErrors] = useState({});
+  const [shotgridData, setShotgridData] = useState(null);
 
   const assetTypes = ['VFX / Visual', 'Audio / Music', 'Audio / Voice', 'Image / Marketing', 'Motion Graphics', 'Script / Text'];
   const projects = ['Nebula Rising', 'The Last Signal', 'Crimson Veil', 'New Project'];
@@ -852,6 +853,20 @@ const CreateModal = ({ onClose, onCreate }) => {
     }
     setStep(2);
   };
+
+
+  const testShotGridPull = async () => {
+    try {
+      const res = await fetch('http://127.0.0.1:8000/shotgrid-assets/Asset');
+      const data = await res.json();
+      setShotgridData(data);
+    } catch (err) {
+      console.error("ShotGrid pull failed:", err);
+    }
+  };
+
+
+
 
   const handleCreate = async () => {
     const firstToolId = Object.keys(selectedTools)[0];
@@ -1122,29 +1137,65 @@ onCreate({
           )}
         </div>
 
-        <div
-          style={{
-            padding: '16px 24px',
-            borderTop: `1px solid ${C.border}`,
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center'
-          }}
-        >
-          <Btn variant="ghost" onClick={step === 1 ? onClose : () => setStep(1)}>
-            {step === 1 ? 'Cancel' : 'Back'}
-          </Btn>
 
-          {step === 1 ? (
-            <Btn onClick={handleNext}>
-              Next: AI Tools <Icons.ChevRight size={13} />
-            </Btn>
-          ) : (
-            <Btn onClick={handleCreate} icon={<Icons.Check size={13} />}>
-              Create Passport
-            </Btn>
-          )}
-        </div>
+
+
+
+
+
+
+        <div
+  style={{
+    padding: '16px 24px',
+    borderTop: `1px solid ${C.border}`,
+  }}
+>
+  <div
+    style={{
+      display: 'flex',
+      justifyContent: 'space-between',
+      alignItems: 'center'
+    }}
+  >
+    <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+      <Btn variant="ghost" onClick={step === 1 ? onClose : () => setStep(1)}>
+        {step === 1 ? 'Cancel' : 'Back'}
+      </Btn>
+
+      <Btn variant="secondary" onClick={testShotGridPull}>
+        Pull ShotGrid Assets
+      </Btn>
+    </div>
+
+    {step === 1 ? (
+      <Btn onClick={handleNext}>
+        Next: AI Tools <Icons.ChevRight size={13} />
+      </Btn>
+    ) : (
+      <Btn onClick={handleCreate} icon={<Icons.Check size={13} />}>
+        Create Passport
+      </Btn>
+    )}
+  </div>
+
+  {shotgridData && (
+    <div
+      style={{
+        marginTop: 12,
+        padding: 10,
+        background: '#111',
+        borderRadius: 6,
+        maxHeight: 220,
+        overflow: 'auto',
+        fontSize: 11
+      }}
+    >
+      <pre style={{ whiteSpace: 'pre-wrap', color: '#e8f0ea' }}>
+        {JSON.stringify(shotgridData, null, 2)}
+      </pre>
+    </div>
+  )}
+</div>
       </div>
     </div>
   );
