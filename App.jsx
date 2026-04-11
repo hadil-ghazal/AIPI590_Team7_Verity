@@ -830,10 +830,141 @@ const CreateModal = ({ onClose, onCreate }) => {
   const [selectedTools, setSelectedTools] = useState({});
   const [errors, setErrors] = useState({});
   const [shotgridData, setShotgridData] = useState(null);
+  const [selectedShotgridId, setSelectedShotgridId] = useState('');
 
-  const assetTypes = ['VFX / Visual', 'Audio / Music', 'Audio / Voice', 'Image / Marketing', 'Motion Graphics', 'Script / Text'];
-  const projects = ['Nebula Rising', 'The Last Signal', 'Crimson Veil', 'New Project'];
-  const regions = ['California', 'European Union', 'Other'];
+
+
+const baseAssetTypes = ['VFX / Visual', 'Audio / Music', 'Audio / Voice', 'Image / Marketing', 'Motion Graphics', 'Script / Text'];
+const baseProjects = ['Nebula Rising', 'The Last Signal', 'Crimson Veil', 'New Project'];
+const baseRegions = ['California', 'European Union', 'Other'];
+
+const assetTypes = form.assetType && !baseAssetTypes.includes(form.assetType)
+  ? [form.assetType, ...baseAssetTypes]
+  : baseAssetTypes;
+
+const projects = form.project && !baseProjects.includes(form.project)
+  ? [form.project, ...baseProjects]
+  : baseProjects;
+
+const regions = form.region && !baseRegions.includes(form.region)
+  ? [form.region, ...baseRegions]
+  : baseRegions;
+
+    
+    const inferAssetTypeFromShotGrid = (selected) => {
+      const assetName = (selected.asset_name?.value || '').toLowerCase();
+      const purpose = (selected.purpose?.value || '').toLowerCase();
+      const toolUsed = (selected.tool_used?.value || '').toLowerCase();
+      const rawAiFields = JSON.stringify(selected.raw_ai_fields?.value || '').toLowerCase();
+  
+      const combined = `${assetName} ${purpose} ${toolUsed} ${rawAiFields}`;
+  
+      const keywordMap = [
+        {
+          type: 'Audio / Voice',
+          keywords: [
+            'voice', 'dialogue', 'dialog', 'dub', 'dubbing', 'speech',
+            'respeecher', 'elevenlabs', 'narration', 'lip sync'
+          ]
+        },
+        {
+          type: 'Audio / Music',
+          keywords: [
+            'music', 'score', 'soundtrack', 'suno', 'ambient', 'audio bed',
+            'background score', 'song'
+          ]
+        },
+        {
+          type: 'Image / Marketing',
+          keywords: [
+            'poster', 'key art', 'marketing', 'campaign', 'ad creative',
+            'thumbnail', 'promo', 'promotional'
+          ]
+        },
+        {
+          type: 'Motion Graphics',
+          keywords: [
+            'motion graphics', 'title card', 'lower third', 'graphics package',
+            'animated text', 'title sequence'
+          ]
+        },
+        {
+          type: 'Script / Text',
+          keywords: [
+            'script', 'copy', 'text', 'synopsis', 'outline',
+            'screenplay', 'draft'
+          ]
+        },
+        {
+          type: 'VFX / Visual',
+          keywords: [
+            'rig', 'creature', 'model', 'character', 'environment', 'vfx',
+            'visual', 'composite', 'compositing', 'shot', 'render',
+            'image', 'frame', 'runway', 'midjourney', 'sdxl', 'firefly'
+          ]
+        }
+      ];
+  
+      for (const rule of keywordMap) {
+        if (rule.keywords.some((keyword) => combined.includes(keyword))) {
+          return rule.type;
+        }
+      }
+  
+      return 'VFX / Visual';
+    };
+
+ 
+    const inferSelectedToolsFromShotGrid = (selected) => {
+      const toolUsed = (selected.tool_used?.value || '').toLowerCase();
+      const purpose = selected.purpose?.value || '';
+      const rawAiFields = JSON.stringify(selected.raw_ai_fields?.value || '').toLowerCase();
+  
+      const combined = `${toolUsed} ${rawAiFields}`;
+  
+      const toolMatchers = [
+        { toolId: 't1', keywords: ['runway', 'gen-3', 'gen 3'] },
+        { toolId: 't2', keywords: ['midjourney'] },
+        { toolId: 't3', keywords: ['elevenlabs'] },
+        { toolId: 't4', keywords: ['stability', 'sdxl'] },
+        { toolId: 't5', keywords: ['suno'] },
+        { toolId: 't6', keywords: ['firefly', 'adobe firefly'] },
+        { toolId: 't7', keywords: ['synthesia'] },
+        { toolId: 't8', keywords: ['respeecher'] },
+      ];
+  
+      const matchedToolIds = toolMatchers
+        .filter((rule) => rule.keywords.some((keyword) => combined.includes(keyword)))
+        .map((rule) => rule.toolId);
+  
+      if (matchedToolIds.length > 0) {
+        return matchedToolIds.reduce((acc, toolId) => {
+          acc[toolId] = purpose || 'Imported from ShotGrid';
+          return acc;
+        }, {});
+      }
+  
+      const assetType = inferAssetTypeFromShotGrid(selected);
+  
+      const fallbackByAssetType = {
+        'VFX / Visual': 't1',
+        'Audio / Music': 't5',
+        'Audio / Voice': 't3',
+        'Image / Marketing': 't2',
+        'Motion Graphics': 't1',
+        'Script / Text': 't2',
+      };
+  
+      const fallbackToolId = fallbackByAssetType[assetType];
+  
+      if (fallbackToolId) {
+        return {
+          [fallbackToolId]: purpose || 'Imported from ShotGrid'
+        };
+      }
+  
+      return {};
+    };    
 
 
 
@@ -866,6 +997,37 @@ const CreateModal = ({ onClose, onCreate }) => {
   };
 
 
+  
+  const handleShotGridSelect = (e) => {
+    const selectedId = e.target.value;
+    setSelectedShotgridId(selectedId);
+  
+    if (!shotgridData || !selectedId) return;
+  
+    const selected = shotgridData.records.find(
+      (r) => String(r.id) === String(selectedId)
+    );
+  
+    if (!selected) return;
+  
+    const pulledName = selected.asset_name?.value || '';
+    const pulledProject = selected.project?.value || '';
+    const pulledRegion = selected.region?.value || '';
+    const pulledNotes = selected.purpose?.value || '';
+    const inferredAssetType = inferAssetTypeFromShotGrid(selected);
+    const inferredSelectedTools = inferSelectedToolsFromShotGrid(selected);
+  
+    setForm((prev) => ({
+      ...prev,
+      name: pulledName || prev.name,
+      assetType: inferredAssetType || prev.assetType,
+      project: pulledProject || prev.project,
+      region: pulledRegion || prev.region,
+      notes: pulledNotes || prev.notes
+    }));
+  
+    setSelectedTools(inferredSelectedTools);
+  };
 
 
   const handleCreate = async () => {
@@ -1139,74 +1301,100 @@ onCreate({
 
 
 
+<div
+          style={{
+            padding: '16px 24px',
+            borderTop: `1px solid ${C.border}`,
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 12
+          }}
+        >
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center'
+            }}
+          >
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              <Btn variant="ghost" onClick={step === 1 ? onClose : () => setStep(1)}>
+                {step === 1 ? 'Cancel' : 'Back'}
+              </Btn>
 
+              <Btn variant="secondary" onClick={testShotGridPull}>
+                Pull ShotGrid Assets
+              </Btn>
+            </div>
 
+            {step === 1 ? (
+              <Btn onClick={handleNext}>
+                Next: AI Tools <Icons.ChevRight size={13} />
+              </Btn>
+            ) : (
+              <Btn onClick={handleCreate} icon={<Icons.Check size={13} />}>
+                Create Passport
+              </Btn>
+            )}
+          </div>
 
+          {shotgridData?.records?.length > 0 && (
+            <div>
+              <label
+                style={{
+                  display: 'block',
+                  fontSize: 12,
+                  fontWeight: 500,
+                  color: C.textMuted,
+                  marginBottom: 6
+                }}
+              >
+                Select ShotGrid Asset
+              </label>
 
-
-        <div
-  style={{
-    padding: '16px 24px',
-    borderTop: `1px solid ${C.border}`,
-  }}
->
-  <div
-    style={{
-      display: 'flex',
-      justifyContent: 'space-between',
-      alignItems: 'center'
-    }}
-  >
-    <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-      <Btn variant="ghost" onClick={step === 1 ? onClose : () => setStep(1)}>
-        {step === 1 ? 'Cancel' : 'Back'}
-      </Btn>
-
-      <Btn variant="secondary" onClick={testShotGridPull}>
-        Pull ShotGrid Assets
-      </Btn>
-    </div>
-
-    {step === 1 ? (
-      <Btn onClick={handleNext}>
-        Next: AI Tools <Icons.ChevRight size={13} />
-      </Btn>
-    ) : (
-      <Btn onClick={handleCreate} icon={<Icons.Check size={13} />}>
-        Create Passport
-      </Btn>
-    )}
-  </div>
-
-  {shotgridData && (
-    <div
-      style={{
-        marginTop: 12,
-        padding: 10,
-        background: '#111',
-        borderRadius: 6,
-        maxHeight: 220,
-        overflow: 'auto',
-        fontSize: 11
-      }}
-    >
-      <pre style={{ whiteSpace: 'pre-wrap', color: '#e8f0ea' }}>
-        {JSON.stringify(shotgridData, null, 2)}
-      </pre>
-    </div>
-  )}
-</div>
+              <select
+                value={selectedShotgridId}
+                onChange={handleShotGridSelect}
+                style={{
+                  width: '100%',
+                  padding: '9px 12px',
+                  background: C.input,
+                  border: `1px solid ${C.borderInput}`,
+                  borderRadius: 8,
+                  color: C.textPrimary,
+                  fontSize: 13
+                }}
+              >
+                <option value="">Choose pulled asset…</option>
+                {shotgridData.records.map((asset) => (
+                  <option key={asset.id} value={asset.id}>
+                    {asset.asset_name?.value || `Asset ${asset.id}`}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
 };
 
 
-
 // ── MAIN APP ──────────────────────────────────────────────────────────────────
 export default function App() {
   const [view, setView] = useState('dashboard');
-  const [passports, setPassports] = useState(INIT_PASSPORTS);
+  const [passports, setPassports] = useState(() => {
+    const saved = localStorage.getItem('verity_passports');
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch (err) {
+        console.error('Failed to parse saved passports:', err);
+      }
+    }
+    return INIT_PASSPORTS;
+  });
   const [selectedId, setSelectedId] = useState(null);
   const [showModal, setShowModal] = useState(false);
 
@@ -1218,6 +1406,11 @@ export default function App() {
     return () => document.head.removeChild(el);
   }, []);
 
+  useEffect(() => {
+    localStorage.setItem('verity_passports', JSON.stringify(passports));
+  }, [passports]);
+
+  
   const selectedPassport = passports.find(p => p.id === selectedId);
 
   const handleSelect = (id) => { setSelectedId(id); setView('detail'); };
