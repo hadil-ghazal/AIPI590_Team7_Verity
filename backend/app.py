@@ -7,6 +7,9 @@ from shotgun_api3 import Shotgun
 from pathlib import Path
 import os
 
+# ── Verity Rules Engine + Gemini Drafter ───────────────────────────────────
+from rules_engine import evaluate_asset as run_rules_engine, classify_tool
+from gemini_drafter import draft_disclosures
 
 ENV_PATH = Path(__file__).resolve().parent / ".env"
 print(f"Loading .env from: {ENV_PATH}")
@@ -114,7 +117,7 @@ def build_semisynthetic_record(entity: Dict[str, Any], ai_field_names: List[str]
             for field in ai_field_names
         }
     }
- 
+
 
 app.add_middleware(
     CORSMiddleware,
@@ -125,7 +128,8 @@ app.add_middleware(
 )
 
 
-# Input structure
+# ── Input / Output models ─────────────────────────────────────────────────
+
 class FieldInput(BaseModel):
     value: str
     source: str
@@ -135,19 +139,45 @@ class AssetInput(BaseModel):
     asset_name: FieldInput
     tool_used: FieldInput
     region: FieldInput
+    asset_type: Optional[FieldInput] = None
+    purpose: Optional[FieldInput] = None
+    distribution: Optional[FieldInput] = None
+    project: Optional[FieldInput] = None
+    involves_human_likeness: Optional[FieldInput] = None
 
 
-# Output structure
+class RuleMatchOut(BaseModel):
+    rule_id: str
+    rule_name: str
+    short_label: str
+    region: str
+    severity: str
+    effective_date: str
+    summary: str
+    disclosure_type: str
+
+
+class DisclosureDraft(BaseModel):
+    rule_id: str
+    rule_name: str
+    disclosure_type: str
+    draft_text: str
+    action_items: List[str]
+
+
 class AssetOutput(BaseModel):
     ai_level: str
     flag: bool
-    disclosure: str
     status: str
+    matched_rules: List[RuleMatchOut]
+    disclosure_piles: Dict[str, Any]
+    disclosures: List[DisclosureDraft]
+    combined_summary: str
 
 
 @app.get("/")
 def home():
-    return {"message": "Verity backend is running"}
+    return {"message": "Verity backend is running — rules engine + Gemini drafter active"}
 
 
 @app.get("/shotgrid-schema/{entity_type}")
@@ -196,45 +226,73 @@ def shotgrid_assets(entity_type: str, limit: int = 50):
         raise HTTPException(status_code=500, detail=f"Failed to load ShotGrid assets: {str(e)}")
 
 
+# ═══════════════════════════════════════════════════════════════════════════
+#  NEW: Rules Engine + Gemini Disclosure Endpoint
+# ═══════════════════════════════════════════════════════════════════════════
 
-@app.post("/evaluate-asset", response_model=AssetOutput)
-def evaluate_asset(payload: AssetInput):
-    # VERY SIMPLE LOGIC (we will improve later)
+@app.post("/evaluate-asset")
+async def evaluate_asset(payload: AssetInput):
+    """
+    Evaluate an asset through the rules engine, then call Gemini
+    to draft regulation-specific disclosures.
 
-    tool = payload.tool_used.value.lower()
-    region = payload.region.value
+    Flow:
+      1. Normalize input into a flat asset dict
+      2. Run all regulation rules (deterministic if/then)
+      3. If flagged → call Gemini to draft disclosures
+      4. Return combined result
+    """
+    # Step 1: Flatten input for the rules engine
+    human_likeness_val = payload.involves_human_likeness.value if payload.involves_human_likeness else "false"
+    asset = {
+        "asset_name": payload.asset_name.value,
+        "tool_used": payload.tool_used.value,
+        "region": payload.region.value,
+        "asset_type": payload.asset_type.value if payload.asset_type else "",
+        "purpose": payload.purpose.value if payload.purpose else "",
+        "distribution": payload.distribution.value if payload.distribution else "",
+        "project": payload.project.value if payload.project else "",
+        "ai_indicator": True,  # if they're submitting, AI was used
+        "involves_human_likeness": human_likeness_val.lower() in ("true", "yes", "1"),
+    }
 
-    # Determine AI level
-    if "runway" in tool:
-        ai_level = "AI-assisted"
-    elif "midjourney" in tool:
-        ai_level = "Fully AI-generated"
-    else:
-        ai_level = "Human"
+    # Step 2: Run the deterministic rules engine
+    engine_result = run_rules_engine(asset)
 
-    # Determine if flagged
-    flag = False
-    if region == "California" and ai_level != "Human":
-        flag = True
+    # Step 3: If flagged, call Gemini for disclosure drafts
+    disclosures = []
+    combined_summary = "No disclosure required."
 
-    # Disclosure
-    if flag:
-        disclosure = f"This asset includes {ai_level} content and requires disclosure in {region}."
-        status = "Needs Review"
-    else:
-        disclosure = "No disclosure required."
-        status = "Clear"
+    draft_source = None
+    if engine_result["flagged"]:
+        gemini_result = await draft_disclosures(engine_result["gemini_context"])
+        disclosures = gemini_result.get("disclosures", [])
+        combined_summary = gemini_result.get("combined_summary", "")
+        draft_source = gemini_result.get("_source", "gemini_api")
 
+    # Step 4: Return combined result
     return {
-        "ai_level": ai_level,
-        "flag": flag,
-        "disclosure": disclosure,
-        "status": status
+        "ai_level": engine_result["ai_level"],
+        "flag": engine_result["flagged"],
+        "status": engine_result["status"],
+        "matched_rules": engine_result["matched_rules"],
+        "disclosure_piles": engine_result["disclosure_piles"],
+        "disclosures": disclosures,
+        "combined_summary": combined_summary,
+        "draft_source": draft_source,
     }
 
 
+# ═══════════════════════════════════════════════════════════════════════════
+#  NEW: Batch evaluation for ShotGrid assets
+# ═══════════════════════════════════════════════════════════════════════════
+
 @app.get("/shotgrid-assets-with-evaluation/{entity_type}")
-def shotgrid_assets_with_evaluation(entity_type: str, limit: int = 50):
+async def shotgrid_assets_with_evaluation(entity_type: str, limit: int = 50):
+    """
+    Pull assets from ShotGrid, run each through the rules engine,
+    and optionally draft disclosures via Gemini for flagged assets.
+    """
     sg = get_sg()
 
     try:
@@ -255,32 +313,37 @@ def shotgrid_assets_with_evaluation(entity_type: str, limit: int = 50):
 
         enriched = []
         for record in normalized:
-            tool = (record["tool_used"]["value"] or "").lower()
-            region = record["region"]["value"] or "California"
+            # Build asset dict for rules engine
+            asset = {
+                "asset_name": record["asset_name"]["value"] or "Untitled",
+                "tool_used": record["tool_used"]["value"] or "",
+                "region": record["region"]["value"] or "California",
+                "asset_type": "",
+                "purpose": record["purpose"]["value"] or "",
+                "distribution": "",
+                "project": record["project"]["value"] or "",
+                "ai_indicator": record["ai_indicator"]["value"],
+            }
 
-            if "runway" in tool:
-                ai_level = "AI-assisted"
-            elif "midjourney" in tool:
-                ai_level = "Fully AI-generated"
-            elif "photoshop generative fill" in tool or "ai assist" in tool:
-                ai_level = "AI-assisted"
-            else:
-                ai_level = "Human"
+            # Run rules engine
+            engine_result = run_rules_engine(asset)
 
-            flag = region == "California" and ai_level != "Human"
-
-            if flag:
-                disclosure = f"This asset includes {ai_level} content and requires disclosure in {region}."
-                status = "Needs Review"
-            else:
-                disclosure = "No disclosure required."
-                status = "Clear"
+            # Draft disclosures for flagged assets
+            disclosures = []
+            combined_summary = "No disclosure required."
+            if engine_result["flagged"]:
+                gemini_result = await draft_disclosures(engine_result["gemini_context"])
+                disclosures = gemini_result.get("disclosures", [])
+                combined_summary = gemini_result.get("combined_summary", "")
 
             record["evaluation"] = {
-                "ai_level": ai_level,
-                "flag": flag,
-                "disclosure": disclosure,
-                "status": status
+                "ai_level": engine_result["ai_level"],
+                "flag": engine_result["flagged"],
+                "status": engine_result["status"],
+                "matched_rules": engine_result["matched_rules"],
+                "disclosure_piles": engine_result["disclosure_piles"],
+                "disclosures": disclosures,
+                "combined_summary": combined_summary,
             }
 
             enriched.append(record)
@@ -288,8 +351,42 @@ def shotgrid_assets_with_evaluation(entity_type: str, limit: int = 50):
         return {
             "entity_type": entity_type,
             "ai_fields_detected": ai_fields,
-            "records": enriched
+            "records": enriched,
         }
 
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to load and evaluate ShotGrid assets: {str(e)}")   
+        raise HTTPException(status_code=500, detail=f"Failed to load and evaluate ShotGrid assets: {str(e)}")
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+#  NEW: Rules-only evaluation (no Gemini, for quick checks)
+# ═══════════════════════════════════════════════════════════════════════════
+
+@app.post("/evaluate-rules-only")
+def evaluate_rules_only(payload: AssetInput):
+    """
+    Run the rules engine without calling Gemini.
+    Useful for quick validation or when Gemini API key is not set.
+    """
+    human_likeness_val = payload.involves_human_likeness.value if payload.involves_human_likeness else "false"
+    asset = {
+        "asset_name": payload.asset_name.value,
+        "tool_used": payload.tool_used.value,
+        "region": payload.region.value,
+        "asset_type": payload.asset_type.value if payload.asset_type else "",
+        "purpose": payload.purpose.value if payload.purpose else "",
+        "distribution": payload.distribution.value if payload.distribution else "",
+        "project": payload.project.value if payload.project else "",
+        "ai_indicator": True,
+        "involves_human_likeness": human_likeness_val.lower() in ("true", "yes", "1"),
+    }
+
+    engine_result = run_rules_engine(asset)
+
+    return {
+        "ai_level": engine_result["ai_level"],
+        "flag": engine_result["flagged"],
+        "status": engine_result["status"],
+        "matched_rules": engine_result["matched_rules"],
+        "disclosure_piles": engine_result["disclosure_piles"],
+    }

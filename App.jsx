@@ -67,10 +67,11 @@ const AI_CATALOG = [
 ];
 
 const REGULATIONS = [
-  { id: 'r1', name: 'California AB 853', region: 'United States — California', status: 'Active', short: 'AB 853', description: 'Requires studios to disclose AI-generated content in entertainment productions and obtain consent from performers whose likeness is replicated.' },
-  { id: 'r2', name: 'EU AI Act Art. 50', region: 'European Union', status: 'Active', short: 'EU AI Act', description: 'Mandates transparency obligations for AI systems generating synthetic media, requiring visible disclosure when AI creates or manipulates images, audio, or video.' },
-  { id: 'r3', name: 'SAG-AFTRA AI Rider', region: 'United States — Industry', status: 'Active', short: 'SAG-AFTRA', description: 'Contractual requirement to notify and compensate performers when AI is used to generate, replicate, or alter their voice or likeness in production.' },
-  { id: 'r4', name: 'AMPTP AI Guidelines', region: 'United States — Industry', status: 'Draft', short: 'AMPTP', description: 'Proposed guidelines from the Alliance of Motion Picture and Television Producers for responsible AI use in production workflows. Currently in negotiation phase.' },
+  { id: 'r1', ruleId: 'CA-AITA', name: 'California AI Transparency Act (AB 853)', region: 'United States — California', status: 'Active', short: 'CA AI Transparency', effectiveDate: '2027-01-01', description: 'Hosting platforms must detect provenance data and provide user interfaces to disclose if content is AI-generated. Requires manifest disclosure (visible label) and latent disclosure (embedded provenance metadata) for all AI-generated synthetic media distributed on large online platforms with California users.' },
+  { id: 'r2', ruleId: 'EU-AIA50', name: 'EU AI Act Art. 50', region: 'European Union', status: 'Active', short: 'EU AI Act', effectiveDate: '2026-08-02', description: 'Mandates transparency obligations for AI systems generating synthetic media, requiring visible disclosure when AI creates or manipulates images, audio, or video. Must include machine-readable marking where technically feasible.' },
+  { id: 'r3', ruleId: 'SAG-AI', name: 'SAG-AFTRA AI Rider', region: 'United States — Industry', status: 'Active', short: 'SAG-AFTRA', effectiveDate: '2024-01-01', description: 'Contractual requirement to notify and compensate performers when AI is used to generate, replicate, or alter their voice or likeness in production. Requires signed consent before use in final cut.' },
+  { id: 'r4', ruleId: 'NY-SPD', name: 'NY Synthetic Performer Disclosure (S.8420-A)', region: 'United States — New York', status: 'Active', short: 'NY Synthetic Performer', effectiveDate: '2026-06-01', description: 'Requires conspicuous disclosure when AI-generated "synthetic performers" appear in advertisements. Does not apply to audio-only ads or dubbing. First violation: $1,000; subsequent: $5,000.' },
+  { id: 'r5', name: 'AMPTP AI Guidelines', region: 'United States — Industry', status: 'Draft', short: 'AMPTP', description: 'Proposed guidelines from the Alliance of Motion Picture and Television Producers for responsible AI use in production workflows. Currently in negotiation phase.' },
 ];
 
 const INIT_PASSPORTS = [
@@ -93,7 +94,7 @@ const INIT_PASSPORTS = [
       { stage: 'Legal Review', approver: 'Marcus Webb', date: '2026-01-17', status: 'approved' },
       { stage: 'Compliance Sign-off', approver: 'Robert Torres', date: '2026-01-18', status: 'approved' },
     ],
-    regulations: ['r1', 'r2', 'r4'],
+    regulations: ['r1', 'r2', 'r5'],
   },
   {
     id: 'p2',
@@ -552,10 +553,12 @@ const PassportRow = ({ passport: p, onClick, delay }) => {
 // ── PASSPORT DETAIL ───────────────────────────────────────────────────────────
 const PassportDetail = ({ passport: p, onBack, onApproveAll }) => {
   const [tab, setTab] = useState('tools');
+  const hasDisclosures = p.disclosures && p.disclosures.length > 0;
   const tabs = [
     { id: 'tools', label: 'AI Tools', icon: Icons.Tool },
     { id: 'approvals', label: 'Approvals', icon: Icons.Check },
     { id: 'regulations', label: 'Regulations', icon: Icons.Book },
+    ...(hasDisclosures ? [{ id: 'disclosures', label: 'Disclosures', icon: Icons.DocCheck }] : []),
   ];
 
   return (
@@ -618,6 +621,7 @@ const PassportDetail = ({ passport: p, onBack, onApproveAll }) => {
         {tab === 'tools' && <ToolsTab tools={p.tools} />}
         {tab === 'approvals' && <ApprovalsTab approvals={p.approvals} />}
         {tab === 'regulations' && <RegulationsTab regIds={p.regulations} passportStatus={p.status} />}
+        {tab === 'disclosures' && <DisclosuresTab disclosures={p.disclosures} matchedRules={p.matchedRules} draftSource={p.draftSource} />}
       </div>
     </div>
   );
@@ -755,6 +759,113 @@ const RegulationsView = () => (
   </div>
 );
 
+// ── DISCLOSURES TAB (Gemini-drafted disclosures) ──────────────────────────────
+const DisclosuresTab = ({ disclosures = [], matchedRules = [], draftSource }) => {
+  const severityColor = (s) => ({ required: C.flagged, contractual: C.review, recommended: C.draft }[s] || C.draft);
+  const typeLabel = (t) => ({
+    platform_label: 'Platform Label',
+    conspicuous_notice: 'Conspicuous Notice',
+    consent_form: 'Consent Form',
+    metadata_provenance: 'Provenance Metadata',
+  }[t] || t);
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+      {/* Matched Rules Summary */}
+      {matchedRules.length > 0 && (
+        <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 10, padding: '16px 18px', animation: 'slideUp 0.3s ease both' }}>
+          <div style={{ fontSize: 13, fontWeight: 500, color: C.textPrimary, marginBottom: 10 }}>Rules Engine Results</div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+            {matchedRules.map((mr, i) => (
+              <div key={i} style={{
+                display: 'inline-flex', alignItems: 'center', gap: 6,
+                padding: '5px 10px', borderRadius: 6, fontSize: 12,
+                background: severityColor(mr.severity) + '15',
+                color: severityColor(mr.severity),
+                border: `1px solid ${severityColor(mr.severity)}30`,
+              }}>
+                <span style={{ width: 6, height: 6, borderRadius: '50%', background: severityColor(mr.severity) }} />
+                {mr.short_label} — {mr.severity}
+              </div>
+            ))}
+          </div>
+          {matchedRules.map((mr, i) => (
+            <div key={i} style={{ marginTop: 10, fontSize: 12, color: C.textSecondary, lineHeight: 1.5 }}>
+              <span style={{ fontWeight: 500, color: C.textPrimary }}>{mr.rule_name}:</span> {mr.summary}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Disclosure Drafts */}
+      {disclosures.map((d, i) => (
+        <div key={i} style={{
+          background: C.card, border: `1px solid ${C.border}`, borderRadius: 10,
+          padding: '18px 20px', animation: `slideUp 0.3s ease ${(i + 1) * 80}ms both`,
+        }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 }}>
+            <div>
+              <div style={{ fontSize: 14, fontWeight: 500, color: C.textPrimary }}>{d.rule_name}</div>
+              <div style={{ fontSize: 12, color: C.textMuted, marginTop: 2 }}>
+                Disclosure type: {typeLabel(d.disclosure_type)}
+              </div>
+            </div>
+            <span style={{
+              fontSize: 11, padding: '3px 8px', borderRadius: 6,
+              background: '#4ade8015', color: C.accent, border: `1px solid ${C.accent}30`,
+            }}>
+              Draft Generated
+            </span>
+          </div>
+
+          {/* The actual disclosure text */}
+          <div style={{
+            background: C.input, border: `1px solid ${C.borderInput}`, borderRadius: 8,
+            padding: '14px 16px', marginBottom: 14,
+          }}>
+            <div style={{ fontSize: 11, fontWeight: 600, color: C.textFaint, letterSpacing: '0.05em', marginBottom: 6, textTransform: 'uppercase' }}>
+              Disclosure Draft
+            </div>
+            <div style={{ fontSize: 13, color: C.textSecondary, lineHeight: 1.65, whiteSpace: 'pre-wrap' }}>
+              {d.draft_text}
+            </div>
+          </div>
+
+          {/* Action items */}
+          {d.action_items && d.action_items.length > 0 && (
+            <div>
+              <div style={{ fontSize: 11, fontWeight: 600, color: C.textFaint, letterSpacing: '0.05em', marginBottom: 8, textTransform: 'uppercase' }}>
+                Action Items
+              </div>
+              {d.action_items.map((item, j) => (
+                <div key={j} style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginBottom: 6 }}>
+                  <div style={{ width: 18, height: 18, borderRadius: 4, border: `1px solid ${C.border}`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, marginTop: 1 }}>
+                    <span style={{ fontSize: 10, color: C.textFaint }}>{j + 1}</span>
+                  </div>
+                  <div style={{ fontSize: 12, color: C.textSecondary, lineHeight: 1.5 }}>{item}</div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      ))}
+
+      {/* Disclaimer */}
+      <div style={{
+        background: '#facc1510', border: '1px solid #facc1530', borderRadius: 8,
+        padding: '10px 14px', fontSize: 11, color: '#fbbf24', lineHeight: 1.5,
+        display: 'flex', gap: 8,
+      }}>
+        <Icons.Alert size={14} style={{ flexShrink: 0, marginTop: 1 }} />
+        {draftSource === 'fallback_template'
+          ? 'These disclosures were generated from built-in compliance templates (Gemini API unavailable). They must be reviewed and approved by your legal team before use.'
+          : 'These disclosures were drafted by Gemini AI from structured regulatory context. They must be reviewed and approved by your legal team before use.'
+        }
+      </div>
+    </div>
+  );
+};
+
 // ── CREATE PASSPORT MODAL ─────────────────────────────────────────────────────
 
 const ModalField = ({ label, name, type = 'text', options, rows, form, setForm, errors, setErrors }) => {
@@ -825,6 +936,8 @@ const CreateModal = ({ onClose, onCreate }) => {
     project: '',
     department: '',
     region: '',
+    distribution: '',
+    involvesHumanLikeness: false,
     notes: ''
   });
   const [selectedTools, setSelectedTools] = useState({});
@@ -836,7 +949,22 @@ const CreateModal = ({ onClose, onCreate }) => {
 
 const baseAssetTypes = ['VFX / Visual', 'Audio / Music', 'Audio / Voice', 'Image / Marketing', 'Motion Graphics', 'Script / Text'];
 const baseProjects = ['Nebula Rising', 'The Last Signal', 'Crimson Veil', 'New Project'];
-const baseRegions = ['California', 'European Union', 'Other'];
+const baseRegions = [
+  'United States — California',
+  'United States — New York',
+  'United States — Other',
+  'European Union',
+  'United Kingdom',
+  'Other',
+];
+const distributionOptions = [
+  'Streaming (Netflix, Disney+, etc.)',
+  'Social Media (YouTube, TikTok, Instagram)',
+  'Theatrical Release',
+  'Broadcast TV',
+  'Internal / Not Distributed',
+  'Other',
+];
 
 const assetTypes = form.assetType && !baseAssetTypes.includes(form.assetType)
   ? [form.assetType, ...baseAssetTypes]
@@ -849,6 +977,10 @@ const projects = form.project && !baseProjects.includes(form.project)
 const regions = form.region && !baseRegions.includes(form.region)
   ? [form.region, ...baseRegions]
   : baseRegions;
+
+const distributions = form.distribution && !distributionOptions.includes(form.distribution)
+  ? [form.distribution, ...distributionOptions]
+  : distributionOptions;
 
     
     const inferAssetTypeFromShotGrid = (selected) => {
@@ -1032,29 +1164,35 @@ const regions = form.region && !baseRegions.includes(form.region)
 
   const handleCreate = async () => {
     const firstToolId = Object.keys(selectedTools)[0];
-const firstTool = AI_CATALOG.find(t => t.id === firstToolId);
+    const firstTool = AI_CATALOG.find(t => t.id === firstToolId);
+    const firstPurpose = selectedTools[firstToolId] || '';
 
-const apiPayload = {
-  asset_name: { value: form.name, source: 'api' },
-  tool_used: { value: firstTool?.name || 'Unknown', source: 'synthetic' },
-  region: { value: form.region || 'Other', source: 'api' }
-};
+    // Build enriched payload for the new rules engine + Gemini endpoint
+    const apiPayload = {
+      asset_name: { value: form.name, source: 'api' },
+      tool_used: { value: firstTool?.name || 'Unknown', source: 'synthetic' },
+      region: { value: form.region || 'Other', source: 'api' },
+      asset_type: { value: form.assetType || '', source: 'api' },
+      purpose: { value: firstPurpose || form.notes || '', source: 'api' },
+      distribution: { value: form.distribution || '', source: 'api' },
+      involves_human_likeness: { value: form.involvesHumanLikeness ? 'true' : 'false', source: 'api' },
+      project: { value: form.project || '', source: 'api' },
+    };
 
-let result = null;
+    let result = null;
 
-try {
-  const response = await fetch('http://127.0.0.1:8000/evaluate-asset', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(apiPayload)
-  });
+    try {
+      const response = await fetch('http://127.0.0.1:8000/evaluate-asset', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(apiPayload)
+      });
+      result = await response.json();
+      console.log("Rules Engine + Gemini Result:", result);
+    } catch (err) {
+      console.error("API failed", err);
+    }
 
-  result = await response.json();
-  //console.log("API RESULT:", result);
-
-} catch (err) {
-  console.error("API failed", err);
-}
     const tools = Object.entries(selectedTools).map(([toolId, purpose]) => ({
       toolId,
       purpose: purpose || 'Purpose not specified',
@@ -1063,31 +1201,51 @@ try {
       status: 'pending',
     }));
 
-    const regs = tools.some(t => ['t3', 't8', 't7'].includes(t.toolId))
-      ? ['r1', 'r2', 'r3']
-      : ['r1', 'r2'];
+    // Map matched rules back to regulation IDs in the REGULATIONS array
+    const matchedRuleIds = (result?.matched_rules || []).map(mr => mr.rule_id);
+    const regs = REGULATIONS
+      .filter(r => r.ruleId && matchedRuleIds.includes(r.ruleId))
+      .map(r => r.id);
+    // Fallback: if API didn't return rules, use tool-based heuristic
+    const finalRegs = regs.length > 0 ? regs
+      : tools.some(t => ['t3', 't8', 't7'].includes(t.toolId))
+        ? ['r1', 'r2', 'r3']
+        : ['r1', 'r2'];
 
+    // Determine passport status from rules engine
+    let passportStatus = 'draft';
+    if (result?.status === 'Flagged — Action Required') passportStatus = 'flagged';
+    else if (result?.status === 'Needs Review') passportStatus = 'in-review';
+    else if (result?.flag === false) passportStatus = 'approved';
 
-onCreate({
-  id: 'p' + Date.now(),
-  name: form.name,
-  status: result?.status === 'Needs Review' ? 'in-review' : 'approved',
-  project: form.project || 'Unassigned',
-  studio: '—',
-  assetType: form.assetType || 'Other',
-  department: form.department || '—',
-  createdDate: new Date().toISOString().slice(0, 10),
-  notes: result?.disclosure || form.notes,
-  region: form.region || 'Other',
-  tools,
-  approvals: [
-    { stage: 'Department Lead', approver: '—', date: null, status: 'pending' },
-    { stage: 'Legal Review', approver: 'Marcus Webb', date: null, status: 'pending' },
-    { stage: 'Compliance Sign-off', approver: 'Robert Torres', date: null, status: 'pending' },
-  ],
-  regulations: regs,
-  compliance: result,
-});
+    // Build notes from disclosure drafts
+    const disclosureNotes = (result?.disclosures || [])
+      .map(d => `[${d.rule_name}] ${d.draft_text}`)
+      .join('\n\n');
+
+    onCreate({
+      id: 'p' + Date.now(),
+      name: form.name,
+      status: passportStatus,
+      project: form.project || 'Unassigned',
+      studio: '—',
+      assetType: form.assetType || 'Other',
+      department: form.department || '—',
+      createdDate: new Date().toISOString().slice(0, 10),
+      notes: disclosureNotes || form.notes,
+      region: form.region || 'Other',
+      tools,
+      approvals: [
+        { stage: 'Department Lead', approver: '—', date: null, status: 'pending' },
+        { stage: 'Legal Review', approver: 'Marcus Webb', date: null, status: 'pending' },
+        { stage: 'Compliance Sign-off', approver: 'Robert Torres', date: null, status: 'pending' },
+      ],
+      regulations: finalRegs,
+      compliance: result,
+      disclosures: result?.disclosures || [],
+      matchedRules: result?.matched_rules || [],
+      draftSource: result?.draft_source || null,
+    });
 
     onClose();
   };
@@ -1215,7 +1373,31 @@ onCreate({
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
               <ModalField label="Department" name="department" form={form} setForm={setForm} errors={errors} setErrors={setErrors} />
-              <ModalField label="Region" name="region" type="select" options={regions} form={form} setForm={setForm} errors={errors} setErrors={setErrors} />
+              <ModalField label="Target Jurisdiction" name="region" type="select" options={regions} form={form} setForm={setForm} errors={errors} setErrors={setErrors} />
+              </div>
+
+              <ModalField label="Distribution Channel" name="distribution" type="select" options={distributions} form={form} setForm={setForm} errors={errors} setErrors={setErrors} />
+
+              {/* Human likeness toggle */}
+              <div style={{ marginBottom: 14 }}>
+                <label style={{
+                  display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px',
+                  background: form.involvesHumanLikeness ? `${C.accent}10` : C.input,
+                  border: `1px solid ${form.involvesHumanLikeness ? C.accent + '50' : C.borderInput}`,
+                  borderRadius: 8, cursor: 'pointer', transition: 'all 0.15s',
+                }}>
+                  <input type="checkbox" checked={form.involvesHumanLikeness}
+                    onChange={e => setForm({ ...form, involvesHumanLikeness: e.target.checked })}
+                    style={{ width: 16, height: 16 }} />
+                  <div>
+                    <div style={{ fontSize: 13, fontWeight: 500, color: C.textPrimary }}>
+                      Involves human likeness or performer
+                    </div>
+                    <div style={{ fontSize: 11, color: C.textMuted, marginTop: 2 }}>
+                      Check if the AI-generated content depicts, replicates, or modifies a human figure, face, voice, or performer likeness
+                    </div>
+                  </div>
+                </label>
               </div>
 
               <ModalField label="Notes" name="notes" rows={3} form={form} setForm={setForm} errors={errors} setErrors={setErrors} />
