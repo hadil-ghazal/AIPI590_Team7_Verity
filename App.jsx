@@ -167,8 +167,25 @@ const ACTIVITY = [
 ];
 
 // ── UTILITY HELPERS ───────────────────────────────────────────────────────────
-const statusColor = (s) => ({ approved: C.approved, 'in-review': C.review, flagged: C.flagged, draft: C.draft, pending: C.draft }[s] || C.draft);
-const statusLabel = (s) => ({ approved: 'Approved', 'in-review': 'In Review', flagged: 'Flagged', draft: 'Draft', pending: 'Pending' }[s] || s);
+
+const statusColor = (s) => ({
+  approved: C.approved,
+  'in-review': C.review,
+  flagged: C.flagged,
+  draft: C.draft,
+  pending: C.draft,
+  archived: C.textFaint,
+}[s] || C.draft);
+
+const statusLabel = (s) => ({
+  approved: 'Approved',
+  'in-review': 'In Review',
+  flagged: 'Flagged',
+  draft: 'Draft',
+  pending: 'Pending',
+  archived: 'Archived',
+}[s] || s);
+
 const findTool = (id) => AI_CATALOG.find(t => t.id === id) || {};
 
 // ── SMALL COMPONENTS ──────────────────────────────────────────────────────────
@@ -465,54 +482,94 @@ const DashboardView = ({ passports, setView, setSelectedId }) => {
 const PassportsView = ({ passports, onSelect, onNew }) => {
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState('all');
-  const tabs = ['all', 'approved', 'in-review', 'flagged', 'draft'];
+  const tabs = ['all', 'approved', 'in-review', 'flagged', 'draft', 'archived'];
 
   const filtered = passports.filter(p => {
-    const matchQ = !query || p.name.toLowerCase().includes(query.toLowerCase()) || p.project.toLowerCase().includes(query.toLowerCase());
-    const matchF = filter === 'all' || p.status === filter;
+    const matchQ =
+      !query ||
+      p.name.toLowerCase().includes(query.toLowerCase()) ||
+      p.project.toLowerCase().includes(query.toLowerCase());
+
+    const matchF = filter === 'all' ? p.status !== 'archived' : p.status === filter;
     return matchQ && matchF;
   });
+
+  const visibleCount = passports.filter(p => p.status !== 'archived').length;
+  const archivedCount = passports.filter(p => p.status === 'archived').length;
 
   return (
     <div style={{ animation: 'fadeIn 0.3s ease' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 22 }}>
         <div>
-          <h1 style={{ fontFamily: 'Fraunces, serif', fontSize: 26, fontWeight: 600, color: C.text, marginBottom: 4 }}>Asset Passports</h1>
-          <p style={{ fontSize: 14, color: C.textMuted }}>{passports.length} passports across all projects</p>
+          <h1 style={{ fontFamily: 'Fraunces, serif', fontSize: 26, fontWeight: 600, color: C.text, marginBottom: 4 }}>
+            Asset Passports
+          </h1>
+          <p style={{ fontSize: 14, color: C.textMuted }}>
+            {visibleCount} active passports
+            {archivedCount > 0 ? ` · ${archivedCount} archived` : ''}
+          </p>
         </div>
-        <Btn onClick={onNew} icon={<Icons.Plus size={14} />} style={{ background: 'linear-gradient(135deg, #22c55e, #4ade80)', color: '#0a1a0d', fontWeight: 600 }}>New Passport</Btn>
+        <Btn
+          onClick={onNew}
+          icon={<Icons.Plus size={14} />}
+          style={{ background: 'linear-gradient(135deg, #22c55e, #4ade80)', color: '#0a1a0d', fontWeight: 600 }}
+        >
+          New Passport
+        </Btn>
       </div>
 
-      {/* Search + Filter */}
       <div style={{ display: 'flex', gap: 12, marginBottom: 18, alignItems: 'center' }}>
         <div style={{ position: 'relative', flex: 1, maxWidth: 360 }}>
           <div style={{ position: 'absolute', left: 11, top: '50%', transform: 'translateY(-50%)', color: C.textFaint }}>
             <Icons.Search size={14} />
           </div>
-          <input value={query} onChange={e => setQuery(e.target.value)} placeholder="Search passports or projects…"
-            style={{ width: '100%', padding: '9px 12px 9px 34px', background: C.input, border: `1px solid ${C.borderInput}`, borderRadius: 8, color: C.textPrimary, fontSize: 13 }} />
+          <input
+            value={query}
+            onChange={e => setQuery(e.target.value)}
+            placeholder="Search passports or projects…"
+            style={{
+              width: '100%',
+              padding: '9px 12px 9px 34px',
+              background: C.input,
+              border: `1px solid ${C.borderInput}`,
+              borderRadius: 8,
+              color: C.textPrimary,
+              fontSize: 13
+            }}
+          />
         </div>
+
         <div style={{ display: 'flex', gap: 4, background: C.input, borderRadius: 9, padding: 4, border: `1px solid ${C.borderInput}` }}>
           {tabs.map(t => (
-            <button key={t} onClick={() => setFilter(t)} style={{
-              padding: '5px 12px', borderRadius: 6, fontSize: 12, fontWeight: 500,
-              background: filter === t ? C.card : 'transparent',
-              color: filter === t ? C.textPrimary : C.textFaint,
-              border: filter === t ? `1px solid ${C.border}` : '1px solid transparent',
-              transition: 'all 0.15s',
-            }}>
-              {t === 'all' ? 'All' : statusLabel(t)}
+            <button
+              key={t}
+              onClick={() => setFilter(t)}
+              style={{
+                padding: '5px 12px',
+                borderRadius: 6,
+                fontSize: 12,
+                fontWeight: 500,
+                background: filter === t ? C.card : 'transparent',
+                color: filter === t ? C.textPrimary : C.textFaint,
+                border: filter === t ? `1px solid ${C.border}` : '1px solid transparent',
+                transition: 'all 0.15s',
+              }}
+            >
+              {t === 'all' ? 'Active' : statusLabel(t)}
             </button>
           ))}
         </div>
       </div>
 
-      {/* List */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
         {filtered.length === 0 && (
-          <div style={{ textAlign: 'center', padding: '48px 0', color: C.textFaint, fontSize: 14 }}>No passports found</div>
+          <div style={{ textAlign: 'center', padding: '48px 0', color: C.textFaint, fontSize: 14 }}>
+            No passports found
+          </div>
         )}
-        {filtered.map((p, i) => <PassportRow key={p.id} passport={p} onClick={() => onSelect(p.id)} delay={i * 40} />)}
+        {filtered.map((p, i) => (
+          <PassportRow key={p.id} passport={p} onClick={() => onSelect(p.id)} delay={i * 40} />
+        ))}
       </div>
     </div>
   );
@@ -550,7 +607,8 @@ const PassportRow = ({ passport: p, onClick, delay }) => {
 };
 
 // ── PASSPORT DETAIL ───────────────────────────────────────────────────────────
-const PassportDetail = ({ passport: p, onBack, onApproveAll }) => {
+
+const PassportDetail = ({ passport: p, onBack, onApproveAll, onArchive, onDelete, onRestore }) => {
   const [tab, setTab] = useState('tools');
   const tabs = [
     { id: 'tools', label: 'AI Tools', icon: Icons.Tool },
@@ -558,15 +616,19 @@ const PassportDetail = ({ passport: p, onBack, onApproveAll }) => {
     { id: 'regulations', label: 'Regulations', icon: Icons.Book },
   ];
 
+  const isArchived = p.status === 'archived';
+
   return (
     <div style={{ animation: 'fadeIn 0.3s ease' }}>
-      {/* Back */}
-      <button onClick={onBack} style={{ display: 'flex', alignItems: 'center', gap: 6, color: C.textMuted, fontSize: 13, marginBottom: 20, background: 'none', cursor: 'pointer', padding: '4px 0', transition: 'color 0.15s' }}
-        onMouseEnter={e => e.target.style.color = C.textPrimary} onMouseLeave={e => e.target.style.color = C.textMuted}>
+      <button
+        onClick={onBack}
+        style={{ display: 'flex', alignItems: 'center', gap: 6, color: C.textMuted, fontSize: 13, marginBottom: 20, background: 'none', cursor: 'pointer', padding: '4px 0', transition: 'color 0.15s' }}
+        onMouseEnter={e => e.target.style.color = C.textPrimary}
+        onMouseLeave={e => e.target.style.color = C.textMuted}
+      >
         <Icons.ChevRight size={14} style={{ transform: 'rotate(180deg)' }} /> Back to Passports
       </button>
 
-      {/* Header card */}
       <div style={{ background: C.card, border: `1px solid ${p.status === 'flagged' ? C.flagged + '50' : C.border}`, borderRadius: 12, padding: '22px 24px', marginBottom: 14 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 14 }}>
           <div>
@@ -581,11 +643,33 @@ const PassportDetail = ({ passport: p, onBack, onApproveAll }) => {
               <span><span style={{ color: C.textFaint }}>Created:</span> {p.createdDate}</span>
             </div>
           </div>
-          <div style={{ display: 'flex', gap: 8 }}>
-            {p.status !== 'approved' && (
-              <Btn onClick={onApproveAll} icon={<Icons.Check size={13} />}>Approve All</Btn>
+
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+            {!isArchived && p.status !== 'approved' && (
+              <Btn onClick={onApproveAll} icon={<Icons.Check size={13} />}>
+                Approve All
+              </Btn>
             )}
-            <Btn variant="secondary" icon={<Icons.Export size={13} />}>Export</Btn>
+
+            {!isArchived && (
+              <Btn variant="secondary" onClick={onArchive}>
+                Archive
+              </Btn>
+            )}
+
+            {isArchived && (
+              <Btn variant="secondary" onClick={onRestore}>
+                Restore
+              </Btn>
+            )}
+
+            <Btn variant="danger" onClick={onDelete}>
+              Delete
+            </Btn>
+
+            <Btn variant="secondary" icon={<Icons.Export size={13} />}>
+              Export
+            </Btn>
           </div>
         </div>
 
@@ -597,38 +681,46 @@ const PassportDetail = ({ passport: p, onBack, onApproveAll }) => {
         )}
       </div>
 
-      {/* Tabs */}
       <div style={{ display: 'flex', gap: 2, marginBottom: 16, background: C.card, borderRadius: 10, padding: 5, border: `1px solid ${C.border}`, width: 'fit-content' }}>
         {tabs.map(({ id, label, icon: TIcon }) => (
-          <button key={id} onClick={() => setTab(id)} style={{
-            display: 'flex', alignItems: 'center', gap: 7, padding: '7px 14px', borderRadius: 7,
-            fontSize: 13, fontWeight: tab === id ? 500 : 400,
-            background: tab === id ? C.input : 'transparent',
-            color: tab === id ? C.textPrimary : C.textMuted,
-            border: tab === id ? `1px solid ${C.border}` : '1px solid transparent',
-            transition: 'all 0.15s',
-          }}>
+          <button
+            key={id}
+            onClick={() => setTab(id)}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 7,
+              padding: '7px 14px',
+              borderRadius: 7,
+              fontSize: 13,
+              fontWeight: tab === id ? 500 : 400,
+              background: tab === id ? C.input : 'transparent',
+              color: tab === id ? C.textPrimary : C.textMuted,
+              border: tab === id ? `1px solid ${C.border}` : '1px solid transparent',
+              transition: 'all 0.15s',
+            }}
+          >
             <TIcon size={14} />{label}
           </button>
         ))}
       </div>
 
-      {/* Tab Content */}
       <div style={{ animation: 'fadeIn 0.2s ease' }}>
         {tab === 'tools' && <ToolsTab tools={p.tools} />}
         {tab === 'approvals' && <ApprovalsTab approvals={p.approvals} />}
         {tab === 'regulations' && (
-  <RegulationsTab
-    regIds={p.regulations}
-    passportStatus={p.status}
-    disclosures={p.disclosures || []}
-    combinedSummary={p.combinedSummary || ''}
-  />
-)}
+          <RegulationsTab
+            regIds={p.regulations}
+            passportStatus={p.status}
+            disclosures={p.disclosures || []}
+            combinedSummary={p.combinedSummary || ''}
+          />
+        )}
       </div>
     </div>
   );
 };
+
 
 const ToolsTab = ({ tools }) => (
   <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -1460,6 +1552,7 @@ onCreate({
 
 
 // ── MAIN APP ──────────────────────────────────────────────────────────────────
+
 export default function App() {
   const [view, setView] = useState('dashboard');
   const [passports, setPassports] = useState(() => {
@@ -1476,7 +1569,6 @@ export default function App() {
   const [selectedId, setSelectedId] = useState(null);
   const [showModal, setShowModal] = useState(false);
 
-  // Inject styles
   useEffect(() => {
     const el = document.createElement('style');
     el.textContent = FONTS;
@@ -1488,35 +1580,114 @@ export default function App() {
     localStorage.setItem('verity_passports', JSON.stringify(passports));
   }, [passports]);
 
-  
   const selectedPassport = passports.find(p => p.id === selectedId);
+  const activePassports = passports.filter(p => p.status !== 'archived');
 
-  const handleSelect = (id) => { setSelectedId(id); setView('detail'); };
+  const handleSelect = (id) => {
+    setSelectedId(id);
+    setView('detail');
+  };
+
   const handleBack = () => setView('passports');
+
   const handleCreate = (passport) => setPassports(prev => [passport, ...prev]);
+
   const handleApproveAll = () => {
     const today = new Date().toISOString().slice(0, 10);
     setPassports(prev => prev.map(p => {
       if (p.id !== selectedId) return p;
       return {
-        ...p, status: 'approved',
+        ...p,
+        status: 'approved',
         tools: p.tools.map(t => ({ ...t, status: 'approved' })),
         approvals: p.approvals.map(a => ({ ...a, status: 'approved', date: a.date || today })),
       };
     }));
   };
 
+  const handleArchiveSelected = () => {
+    if (!selectedPassport) return;
+
+    const confirmed = window.confirm(`Archive "${selectedPassport.name}"?`);
+    if (!confirmed) return;
+
+    setPassports(prev =>
+      prev.map(p =>
+        p.id === selectedId
+          ? {
+              ...p,
+              status: 'archived',
+              archivedAt: new Date().toISOString(),
+            }
+          : p
+      )
+    );
+
+    setSelectedId(null);
+    setView('passports');
+  };
+
+  const handleDeleteSelected = () => {
+    if (!selectedPassport) return;
+
+    const confirmed = window.confirm(
+      `Delete "${selectedPassport.name}" permanently?\n\nThis cannot be undone.`
+    );
+    if (!confirmed) return;
+
+    setPassports(prev => prev.filter(p => p.id !== selectedId));
+    setSelectedId(null);
+    setView('passports');
+  };
+
+  const handleRestoreSelected = () => {
+    if (!selectedPassport) return;
+
+    setPassports(prev =>
+      prev.map(p =>
+        p.id === selectedId
+          ? {
+              ...p,
+              status: 'draft',
+              archivedAt: null,
+            }
+          : p
+      )
+    );
+  };
+
   return (
     <div style={{ display: 'flex', height: '100vh', background: C.bg, overflow: 'hidden' }}>
-      <Sidebar view={view} setView={(v) => { setView(v); if (v !== 'detail') setSelectedId(null); }} passportCount={passports.length} />
+      <Sidebar
+        view={view}
+        setView={(v) => {
+          setView(v);
+          if (v !== 'detail') setSelectedId(null);
+        }}
+        passportCount={activePassports.length}
+      />
 
-      {/* Main */}
       <main style={{ marginLeft: 240, flex: 1, overflowY: 'auto', padding: '32px 36px', minHeight: '100vh' }}>
-        {view === 'dashboard' && <DashboardView passports={passports} setView={setView} setSelectedId={setSelectedId} />}
-        {view === 'passports' && <PassportsView passports={passports} onSelect={handleSelect} onNew={() => setShowModal(true)} />}
-        {view === 'detail' && selectedPassport && (
-          <PassportDetail passport={selectedPassport} onBack={handleBack} onApproveAll={handleApproveAll} key={selectedPassport.id + selectedPassport.status} />
+        {view === 'dashboard' && (
+          <DashboardView passports={activePassports} setView={setView} setSelectedId={setSelectedId} />
         )}
+
+        {view === 'passports' && (
+          <PassportsView passports={passports} onSelect={handleSelect} onNew={() => setShowModal(true)} />
+        )}
+
+        {view === 'detail' && selectedPassport && (
+          <PassportDetail
+            passport={selectedPassport}
+            onBack={handleBack}
+            onApproveAll={handleApproveAll}
+            onArchive={handleArchiveSelected}
+            onDelete={handleDeleteSelected}
+            onRestore={handleRestoreSelected}
+            key={selectedPassport.id + selectedPassport.status}
+          />
+        )}
+
         {view === 'regulations' && <RegulationsView />}
       </main>
 
@@ -1524,3 +1695,5 @@ export default function App() {
     </div>
   );
 }
+
+
