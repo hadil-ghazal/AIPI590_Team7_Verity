@@ -8,8 +8,8 @@ from pathlib import Path
 import os
 
 # ── Verity Rules Engine + Gemini Drafter ───────────────────────────────────
-from rules_engine import evaluate_asset as run_rules_engine, classify_tool
-from gemini_drafter import draft_disclosures
+from backend.rules_engine import evaluate_asset as run_rules_engine, classify_tool
+from backend.gemini_drafter import draft_disclosures
 
 ENV_PATH = Path(__file__).resolve().parent / ".env"
 print(f"Loading .env from: {ENV_PATH}")
@@ -264,11 +264,19 @@ async def evaluate_asset(payload: AssetInput):
     combined_summary = "No disclosure required."
 
     draft_source = None
+
     if engine_result["flagged"]:
         gemini_result = await draft_disclosures(engine_result["gemini_context"])
+
+        print("GEMINI RESULT FULL:", gemini_result)
+        print("DISCLOSURES COUNT BEFORE APP RETURN:", len(gemini_result.get("disclosures", [])))
+
         disclosures = gemini_result.get("disclosures", [])
         combined_summary = gemini_result.get("combined_summary", "")
         draft_source = gemini_result.get("_source", "gemini_api")
+
+        print("DISCLOSURES SENT TO FRONTEND:", disclosures)
+
 
     # Step 4: Return combined result
     return {

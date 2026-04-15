@@ -19,12 +19,7 @@ import os
 import httpx
 from typing import Dict, Any, Optional
 
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
 GEMINI_MODEL = "gemini-2.5-flash"
-GEMINI_URL = (
-    f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}"
-    f":generateContent?key={GEMINI_API_KEY}"
-)
 
 # ── System prompt for Gemini ──────────────────────────────────────────────
 SYSTEM_PROMPT = """\
@@ -106,8 +101,16 @@ async def draft_disclosures(gemini_context: Dict[str, Any]) -> Dict[str, Any]:
     Returns the parsed JSON response from Gemini, or a fallback dict if
     the API call fails (so the app still works without the key).
     """
-    if not GEMINI_API_KEY:
-        return _fallback_draft(gemini_context)
+    gemini_api_key = os.getenv("GEMINI_API_KEY", "")
+    gemini_url = (
+        f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}"
+        f":generateContent?key={gemini_api_key}"
+    )
+ 
+    if not gemini_api_key:
+        fallback = _fallback_draft(gemini_context)
+        fallback["_source"] = "fallback_template"
+        return fallback    
 
     user_prompt = _build_user_prompt(gemini_context)
 
@@ -131,7 +134,7 @@ async def draft_disclosures(gemini_context: Dict[str, Any]) -> Dict[str, Any]:
     try:
         async with httpx.AsyncClient(timeout=30.0) as client:
             resp = await client.post(
-                GEMINI_URL,
+                gemini_url,    
                 json=payload,
                 headers={"Content-Type": "application/json"},
             )
@@ -140,11 +143,75 @@ async def draft_disclosures(gemini_context: Dict[str, Any]) -> Dict[str, Any]:
 
             # Extract text from Gemini response
             text = data["candidates"][0]["content"]["parts"][0]["text"]
-            return json.loads(text)
+            parsed = json.loads(text)
+            parsed = _ensure_all_regulations_covered(parsed, gemini_context)
+            parsed["disclosures"] = _normalize_and_dedupe_disclosures(
+                parsed.get("disclosures", []),
+                gemini_context
+            )
+
+            return parsed
+       
 
     except Exception as e:
         print(f"[Verity] Gemini API error: {e}")
-        return _fallback_draft(gemini_context)
+        fallback = _fallback_draft(gemini_context)
+        fallback["_source"] = "fallback_template"
+        return fallback
+
+
+
+def _canonical_rule_id(disclosure: Dict[str, Any]) -> str:
+    rid = (disclosure.get("rule_id") or "").strip().upper()
+    rule_name = (disclosure.get("rule_name") or "").strip().lower()
+
+    if rid in {"CA-AITA", "NY-SPD", "EU-AIA50", "SAG-AI"}:
+        return rid
+
+    if "california ai transparency act" in rule_name or "ab 853" in rule_name:
+        return "CA-AITA"
+    if "synthetic performer" in rule_name or "396-b" in rule_name or "8420-a" in rule_name:
+        return "NY-SPD"
+    if "eu ai act" in rule_name or "article 50" in rule_name:
+        return "EU-AIA50"
+    if "sag-aftra" in rule_name or "ai rider" in rule_name:
+        return "SAG-AI"
+
+    return rid or rule_name or "UNKNOWN"
+
+
+def _normalize_and_dedupe_disclosures(
+    disclosures: list,
+    gemini_context: Dict[str, Any]
+) -> list:
+    fallback = _fallback_draft(gemini_context)
+    fallback_by_id = {
+        _canonical_rule_id(d): d
+        for d in fallback.get("disclosures", [])
+    }
+
+    merged = {}
+
+    for d in disclosures or []:
+        canon = _canonical_rule_id(d)
+
+        normalized = {
+            "rule_id": canon,
+            "rule_name": d.get("rule_name") or fallback_by_id.get(canon, {}).get("rule_name", canon),
+            "disclosure_type": d.get("disclosure_type") or fallback_by_id.get(canon, {}).get("disclosure_type", "platform_label"),
+            "draft_text": d.get("draft_text") or fallback_by_id.get(canon, {}).get("draft_text", ""),
+            "action_items": d.get("action_items") or fallback_by_id.get(canon, {}).get("action_items", []),
+        }
+        fallback_text = fallback_by_id.get(canon, {}).get("draft_text", "")
+
+        if canon == "CA-AITA":
+            if normalized["draft_text"] and len(normalized["draft_text"]) < 140:
+                normalized["draft_text"] = fallback_text
+                normalized["action_items"] = fallback_by_id.get(canon, {}).get("action_items", [])
+
+        merged[canon] = normalized
+
+    return list(merged.values())
 
 
 def _fallback_draft(gemini_context: Dict[str, Any]) -> Dict[str, Any]:
@@ -174,6 +241,7 @@ def _fallback_draft(gemini_context: Dict[str, Any]) -> Dict[str, Any]:
                 "Add visible 'AI-Generated' label to platform listing",
                 "File manifest disclosure with distribution platform",
             ]
+
         elif rid == "NY-SPD":
             draft = (
                 f"Synthetic Performer Notice: This advertisement features one or more "
@@ -187,6 +255,7 @@ def _fallback_draft(gemini_context: Dict[str, Any]) -> Dict[str, Any]:
                 "Ensure disclosure is visible before consumer engagement",
                 f"Document compliance (first violation penalty: {ctx.get('penalty_first_violation', '$1,000')})",
             ]
+
         elif rid == "EU-AIA50":
             draft = (
                 f"AI Transparency Label: The content in \"{asset_name}\" has been "
@@ -199,6 +268,7 @@ def _fallback_draft(gemini_context: Dict[str, Any]) -> Dict[str, Any]:
                 "Embed machine-readable metadata (C2PA or equivalent)",
                 "Update content registry with AI generation details",
             ]
+
         elif rid == "SAG-AI":
             draft = (
                 f"Performer AI Usage Notification: The production of \"{asset_name}\" "
@@ -213,6 +283,7 @@ def _fallback_draft(gemini_context: Dict[str, Any]) -> Dict[str, Any]:
                 "Obtain signed consent forms before use in final cut",
                 "File compensation terms per CBA provisions",
             ]
+
         else:
             draft = (
                 f"Compliance Notice: \"{asset_name}\" uses AI-generated content "
@@ -228,6 +299,121 @@ def _fallback_draft(gemini_context: Dict[str, Any]) -> Dict[str, Any]:
             "draft_text": draft,
             "action_items": actions,
         })
+
+    rule_names = [r.get("short_label") or r.get("rule_name") for r in regs]
+    combined = (
+        f"\"{asset_name}\" has been flagged under {', '.join(rule_names) or 'no regulations'}. "
+        f"{'Disclosure drafts have been generated and require legal review.' if disclosures else 'No action required.'}"
+    )
+
+    return {
+        "disclosures": disclosures,
+        "combined_summary": combined,
+        "_source": "fallback_template",
+    }
+
+
+def _ensure_all_regulations_covered(
+    gemini_result: Dict[str, Any],
+    gemini_context: Dict[str, Any]
+) -> Dict[str, Any]:
+    fallback = _fallback_draft(gemini_context)
+
+    returned = gemini_result.get("disclosures", []) or []
+    fallback_disclosures = fallback.get("disclosures", []) or []
+
+    merged = {}
+
+    for d in fallback_disclosures:
+        rid = d.get("rule_id")
+        if rid:
+            merged[rid] = d
+
+    for d in returned:
+        rid = d.get("rule_id")
+        if rid:
+            merged[rid] = d
+
+    gemini_result["disclosures"] = list(merged.values())
+
+    if not gemini_result.get("combined_summary"):
+        gemini_result["combined_summary"] = fallback.get("combined_summary", "")
+
+    if not gemini_result.get("_source"):
+        gemini_result["_source"] = "gemini_api"
+
+    return gemini_result
+
+
+
+def _ensure_all_regulations_covered(
+    gemini_result: Dict[str, Any],
+    gemini_context: Dict[str, Any]
+) -> Dict[str, Any]:
+    fallback = _fallback_draft(gemini_context)
+
+    returned = gemini_result.get("disclosures", []) or []
+    fallback_disclosures = fallback.get("disclosures", []) or []
+
+    merged = {}
+
+    for d in fallback_disclosures:
+        rid = d.get("rule_id")
+        if rid:
+            merged[rid] = d
+
+    for d in returned:
+        rid = d.get("rule_id")
+        if rid:
+            merged[rid] = d
+
+    gemini_result["disclosures"] = list(merged.values())
+
+    if not gemini_result.get("combined_summary"):
+        gemini_result["combined_summary"] = fallback.get("combined_summary", "")
+
+    if not gemini_result.get("_source"):
+        gemini_result["_source"] = "gemini_api"
+
+    return gemini_result
+
+
+
+def _ensure_all_regulations_covered(
+    gemini_result: Dict[str, Any],
+    gemini_context: Dict[str, Any]
+) -> Dict[str, Any]:
+    fallback = _fallback_draft(gemini_context)
+
+
+    returned = gemini_result.get("disclosures", []) or []
+    fallback_disclosures = fallback.get("disclosures", []) or []
+
+    # Build dict to dedupe by rule_id (Gemini takes priority)
+    merged = {}
+
+    for d in fallback_disclosures:
+        if d.get("rule_id"):
+            merged[d["rule_id"]] = d
+
+    for d in returned:
+        if d.get("rule_id"):
+            merged[d["rule_id"]] = d  # overwrite fallback with Gemini
+
+    gemini_result["disclosures"] = list(merged.values())
+
+
+    if not gemini_result.get("combined_summary"):
+        gemini_result["combined_summary"] = fallback.get("combined_summary", "")
+
+    if not gemini_result.get("_source"):
+        gemini_result["_source"] = "gemini_api"
+
+    return gemini_result
+
+
+
+
 
     # Combined summary
     rule_names = [r["short_label"] if "short_label" in r else r["rule_name"] for r in regs]
