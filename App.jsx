@@ -617,7 +617,14 @@ const PassportDetail = ({ passport: p, onBack, onApproveAll }) => {
       <div style={{ animation: 'fadeIn 0.2s ease' }}>
         {tab === 'tools' && <ToolsTab tools={p.tools} />}
         {tab === 'approvals' && <ApprovalsTab approvals={p.approvals} />}
-        {tab === 'regulations' && <RegulationsTab regIds={p.regulations} passportStatus={p.status} />}
+        {tab === 'regulations' && (
+  <RegulationsTab
+    regIds={p.regulations}
+    passportStatus={p.status}
+    disclosures={p.disclosures || []}
+    combinedSummary={p.combinedSummary || ''}
+  />
+)}
       </div>
     </div>
   );
@@ -690,8 +697,11 @@ const ApprovalsTab = ({ approvals }) => (
   </div>
 );
 
-const RegulationsTab = ({ regIds, passportStatus }) => {
+
+
+const RegulationsTab = ({ regIds, passportStatus, disclosures = [], combinedSummary = '' }) => {
   const regs = REGULATIONS.filter(r => regIds.includes(r.id));
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
       {regs.map((r, i) => (
@@ -709,9 +719,64 @@ const RegulationsTab = ({ regIds, passportStatus }) => {
           <div style={{ fontSize: 13, color: C.textSecondary, lineHeight: 1.6 }}>{r.description}</div>
         </div>
       ))}
+
+      {combinedSummary && (
+        <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 10, padding: '16px 18px' }}>
+          <div style={{ fontSize: 14, fontWeight: 600, color: C.textPrimary, marginBottom: 8 }}>
+            Compliance Summary
+          </div>
+          <div style={{ fontSize: 13, color: C.textSecondary, lineHeight: 1.6 }}>
+            {combinedSummary}
+          </div>
+        </div>
+      )}
+
+      {disclosures.length > 0 && (
+        <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 10, padding: '16px 18px' }}>
+          <div style={{ fontSize: 14, fontWeight: 600, color: C.textPrimary, marginBottom: 10 }}>
+            Generated Disclosures
+          </div>
+
+          {disclosures.map((d, i) => (
+            <div
+              key={i}
+              style={{
+                padding: '12px 0',
+                borderTop: i === 0 ? 'none' : `1px solid ${C.border}`
+              }}
+            >
+              <div style={{ fontSize: 13, fontWeight: 500, color: C.textPrimary, marginBottom: 4 }}>
+                {d.rule_name}
+              </div>
+              <div style={{ fontSize: 11, color: C.textFaint, marginBottom: 8 }}>
+                {d.disclosure_type}
+              </div>
+              <div style={{ fontSize: 13, color: C.textSecondary, lineHeight: 1.6, marginBottom: 8 }}>
+                {d.draft_text}
+              </div>
+
+              {d.action_items && d.action_items.length > 0 && (
+                <div>
+                  <div style={{ fontSize: 11, fontWeight: 600, color: C.textMuted, marginBottom: 4 }}>
+                    Action Items
+                  </div>
+                  <ul style={{ paddingLeft: 18, margin: 0 }}>
+                    {d.action_items.map((item, idx) => (
+                      <li key={idx} style={{ fontSize: 12, color: C.textSecondary, marginBottom: 4 }}>
+                        {item}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 };
+
 
 // ── REGULATIONS VIEW ──────────────────────────────────────────────────────────
 const RegulationsView = () => (
@@ -1063,21 +1128,32 @@ try {
       status: 'pending',
     }));
 
-    const regs = tools.some(t => ['t3', 't8', 't7'].includes(t.toolId))
-      ? ['r1', 'r2', 'r3']
-      : ['r1', 'r2'];
-
+    const ruleIdToRegCardId = {
+      'CA-AITA': 'r1',
+      'EU-AIA50': 'r2',
+      'SAG-AI': 'r3',
+      'NY-SPD': 'r4',
+    };
+      
+    const regs = (result?.matched_rules || [])
+      .map(rule => ruleIdToRegCardId[rule.rule_id])
+      .filter(Boolean);
 
 onCreate({
   id: 'p' + Date.now(),
   name: form.name,
-  status: result?.status === 'Needs Review' ? 'in-review' : 'approved',
+  status:
+  result?.status === 'Flagged — Action Required'
+    ? 'flagged'
+    : result?.status === 'Needs Review'
+    ? 'in-review'
+    : 'approved',
   project: form.project || 'Unassigned',
   studio: '—',
   assetType: form.assetType || 'Other',
   department: form.department || '—',
   createdDate: new Date().toISOString().slice(0, 10),
-  notes: result?.disclosure || form.notes,
+  notes: result?.combined_summary || form.notes,
   region: form.region || 'Other',
   tools,
   approvals: [
@@ -1087,6 +1163,8 @@ onCreate({
   ],
   regulations: regs,
   compliance: result,
+  disclosures: result?.disclosures || [],
+  combinedSummary: result?.combined_summary || '',
 });
 
     onClose();
